@@ -1,0 +1,2006 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bangkok City Roleplay · Interactive Mind Map</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Noto Sans Thai & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans Thai"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    colors: {
+                        slateDark: {
+                            950: '#070b14',
+                            900: '#0d1424',
+                            850: '#131c31',
+                            800: '#1a2540',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Full-viewport locked canvas */
+        html, body {
+            width: 100%;
+            height: 100%;
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Noto Sans Thai', sans-serif;
+            background-color: #070b14;
+            color: #f8fafc;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Subtle dot-grid background */
+        .bg-dot-grid {
+            background-size: 30px 30px;
+            background-image: radial-gradient(circle, rgba(148, 163, 184, 0.14) 1px, transparent 1px);
+        }
+
+        /* Sleek scrollbars for detail drawer */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(13, 20, 36, 0.8);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, 0.45);
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(245, 158, 11, 0.75);
+        }
+
+        /* Large fixed 10000x10000 world container to prevent any line cutoff bugs */
+        #world {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 10000px;
+            height: 10000px;
+            transform-origin: 0 0;
+            will-change: transform;
+            pointer-events: none;
+        }
+        #nodesLayer, #connectorsSvg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 10000px;
+            height: 10000px;
+            pointer-events: none;
+        }
+        #nodesLayer {
+            pointer-events: auto;
+        }
+
+        /* Smooth CSS transform & opacity transitions on every Mind Map node */
+        .mm-node {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                        opacity 0.28s ease,
+                        box-shadow 0.22s ease,
+                        border-color 0.22s ease;
+            will-change: transform, opacity;
+            pointer-events: auto;
+        }
+
+        /* Subtle tactile hover lift on inner card */
+        .mm-card {
+            transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+                        background-color 0.2s ease,
+                        border-color 0.2s ease,
+                        box-shadow 0.2s ease;
+        }
+        .mm-node:hover {
+            z-index: 30;
+        }
+        .mm-node:hover .mm-card {
+            transform: translateY(-2px);
+        }
+
+        /* Ambient gentle pulse on root node */
+        @keyframes rootAmbientGlow {
+            0%, 100% {
+                box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.45),
+                            0 8px 26px -4px rgba(245, 158, 11, 0.26);
+            }
+            50% {
+                box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.75),
+                            0 10px 34px -2px rgba(245, 158, 11, 0.42);
+            }
+        }
+        .root-glow {
+            animation: rootAmbientGlow 3.6s ease-in-out infinite;
+        }
+
+        /* Search match & active focus highlight */
+        @keyframes matchPulse {
+            0%, 100% {
+                box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.85), 0 0 16px rgba(245, 158, 11, 0.4);
+            }
+            50% {
+                box-shadow: 0 0 0 4px rgba(251, 191, 36, 1), 0 0 24px rgba(245, 158, 11, 0.8);
+            }
+        }
+        .search-match .mm-card {
+            animation: matchPulse 2s infinite;
+            border-color: #fbbf24 !important;
+        }
+        .search-focus .mm-card,
+        .selected-node .mm-card {
+            box-shadow: 0 0 0 3px #38bdf8, 0 0 26px rgba(56, 189, 248, 0.65) !important;
+            border-color: #38bdf8 !important;
+        }
+
+        /* SVG Bezier connector smooth draw-in & path morphing */
+        .mm-edge {
+            fill: none;
+            stroke-linecap: round;
+            stroke-dasharray: none;
+            transition: opacity 0.28s ease, stroke-width 0.2s ease;
+        }
+        @keyframes edgeDrawIn {
+            from {
+                stroke-dashoffset: 1;
+                opacity: 0;
+            }
+            to {
+                stroke-dashoffset: 0;
+                opacity: 0.75;
+            }
+        }
+        .mm-edge-enter {
+            stroke-dasharray: 1;
+            stroke-dashoffset: 1;
+            animation: edgeDrawIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+    </style>
+</head>
+<body class="flex flex-col bg-slateDark-950 bg-dot-grid">
+
+    <!-- Clean Minimal Single-Row Top Toolbar -->
+    <header class="z-40 bg-slateDark-900/95 backdrop-blur-md border-b border-slate-800/90 px-3 py-2.5 sm:px-5 shadow-xl shrink-0">
+        <div class="flex items-center justify-between gap-2 sm:gap-3">
+            <!-- App Title & Badge -->
+            <div class="flex items-center gap-2.5 shrink-0">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-md shadow-amber-500/25 text-slate-950 shrink-0">
+                    <!-- Inline SVG Network Icon -->
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="5" cy="12" r="3"></circle>
+                        <circle cx="19" cy="5" r="3"></circle>
+                        <circle cx="19" cy="12" r="3"></circle>
+                        <circle cx="19" cy="19" r="3"></circle>
+                        <path d="M8 12h8M8 11l8-5M8 13l8 5"></path>
+                    </svg>
+                </div>
+                <div class="leading-tight">
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-xs sm:text-sm md:text-base font-bold bg-gradient-to-r from-amber-300 via-amber-400 to-orange-400 bg-clip-text text-transparent">
+                            Bangkok City Roleplay
+                        </h1>
+                        <span class="hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                            Mind Map
+                        </span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 hidden lg:block">
+                        กฎโรลเพลย์ 24 ข้อ • คำสั่งเซิร์ฟเวอร์ 42 คำสั่ง • กฎ Discord 60 มาตรา
+                    </p>
+                </div>
+            </div>
+
+            <!-- Search Input -->
+            <div class="relative flex-1 max-w-md min-w-[130px]">
+                <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.3-4.3"></path>
+                </svg>
+                <input
+                    id="searchInput"
+                    type="text"
+                    placeholder="ค้นหากฎโรลเพลย์, คำสั่ง :..., หรือมาตรา Discord..."
+                    class="w-full bg-slateDark-950/90 border border-slate-700/80 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 rounded-xl pl-9 pr-24 py-1.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 outline-none transition"
+                />
+                <!-- Match Counter & Next/Prev Controls -->
+                <div id="searchControls" class="hidden absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-slate-800/95 border border-slate-700 rounded-lg px-1 py-0.5">
+                    <span id="searchCountText" class="text-[11px] font-mono font-semibold text-amber-300 px-1">0/0</span>
+                    <button id="prevMatchBtn" type="button" class="p-1 rounded hover:bg-slate-700 text-slate-300 hover:text-white transition" title="ผลลัพธ์ก่อนหน้า (Shift+Enter)">
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m18 15-6-6-6 6"/></svg>
+                    </button>
+                    <button id="nextMatchBtn" type="button" class="p-1 rounded hover:bg-slate-700 text-slate-300 hover:text-white transition" title="ผลลัพธ์ถัดไป (Enter)">
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <button id="clearSearchBtn" type="button" class="p-1 rounded hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 transition" title="ล้างคำค้นหา">
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Action & Zoom Controls -->
+            <div class="flex items-center gap-1.5 shrink-0">
+                <button id="expandAllBtn" type="button" class="px-2.5 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium flex items-center gap-1.5 transition active:scale-95" title="ขยายกิ่งทั้งหมด">
+                    <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"/></svg>
+                    <span class="hidden md:inline">ขยายทั้งหมด</span>
+                </button>
+                <button id="collapseAllBtn" type="button" class="px-2.5 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium flex items-center gap-1.5 transition active:scale-95" title="ยุบกิ่งทั้งหมด">
+                    <svg class="w-3.5 h-3.5 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m7 20 5-5 5 5M7 4l5 5 5-5"/></svg>
+                    <span class="hidden md:inline">ยุบทั้งหมด</span>
+                </button>
+                <button id="resetViewBtn" type="button" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition active:scale-95" title="รีเซ็ตมุมมองกลับไปที่หัวข้อหลัก">
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M3 12h3m12 0h3M12 3v3m0 12v3"/></svg>
+                    <span class="hidden sm:inline">รีเซ็ตมุมมอง</span>
+                </button>
+
+                <!-- Desktop Zoom Pill -->
+                <div class="hidden sm:flex items-center bg-slateDark-950/90 border border-slate-700/80 rounded-xl p-0.5 ml-0.5">
+                    <button id="zoomOutBtn" type="button" class="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition" title="ซูมออก">
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/></svg>
+                    </button>
+                    <span id="zoomLevelText" class="text-[11px] font-mono font-semibold text-amber-400 px-1.5 min-w-[46px] text-center">85%</span>
+                    <button id="zoomInBtn" type="button" class="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition" title="ซูมเข้า">
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Interactive Unidirectional Left-to-Right Mind Map Canvas -->
+    <main id="viewport" class="relative flex-1 w-full h-full overflow-hidden cursor-grab active:cursor-grabbing touch-none">
+        <div id="world">
+            <svg id="connectorsSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+            <div id="nodesLayer"></div>
+        </div>
+
+        <!-- Subtle Legend Pill (Bottom Left) -->
+        <div class="absolute bottom-4 left-4 z-30 pointer-events-none hidden md:block">
+            <div class="bg-slateDark-900/90 backdrop-blur-md border border-slate-800/90 rounded-2xl px-3.5 py-2.5 shadow-xl pointer-events-auto">
+                <div class="text-[11px] font-semibold text-slate-200 mb-1.5">โครงสร้างกิ่งก้าน (ซ้าย → ขวา) · ไร้ขีดจำกัด</div>
+                <div class="flex items-center gap-3 text-[11px] text-slate-300">
+                    <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>กฎโรลเพลย์ (24 ข้อ)</span>
+                    <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>คำสั่งเซิร์ฟเวอร์ (42)</span>
+                    <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-indigo-400"></span>กฎ Discord (60 ม.)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Floating Zoom Controls -->
+        <div class="sm:hidden absolute bottom-4 right-4 z-30 flex items-center gap-1 bg-slateDark-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl p-1 shadow-xl">
+            <button id="mobileZoomOutBtn" type="button" class="p-2 rounded-xl hover:bg-slate-800 text-slate-300" title="ซูมออก">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/></svg>
+            </button>
+            <span id="mobileZoomText" class="text-xs font-mono font-semibold text-amber-400 px-1.5 min-w-[46px] text-center">85%</span>
+            <button id="mobileZoomInBtn" type="button" class="p-2 rounded-xl hover:bg-slate-800 text-slate-300" title="ซูมเข้า">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+        </div>
+
+        <!-- Toast Feedback Pill -->
+        <div id="toast" class="fixed bottom-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none opacity-0 transition-opacity duration-200 bg-slate-800/95 border border-amber-500/60 text-amber-200 px-4 py-2 rounded-full text-xs font-medium shadow-2xl flex items-center gap-2">
+            <svg class="w-4 h-4 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+            <span id="toastMessage">คัดลอกเรียบร้อยแล้ว</span>
+        </div>
+    </main>
+
+    <!-- Slide-Over Detail Drawer (Overlays without shifting canvas coordinates) -->
+    <aside id="detailDrawer" class="fixed inset-y-0 right-0 z-50 w-full sm:w-[440px] bg-slateDark-900/98 backdrop-blur-xl border-l border-slate-800 shadow-2xl transform translate-x-full transition-transform duration-300 ease-out flex flex-col">
+        <!-- Drawer Header -->
+        <div class="p-4 sm:p-5 border-b border-slate-800 flex items-start justify-between gap-3 shrink-0">
+            <div class="flex items-center gap-3 min-w-0">
+                <div id="drawerIconBox" class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-amber-500/20 text-amber-400 border border-amber-500/30"></div>
+                <div class="min-w-0">
+                    <span id="drawerCategory" class="text-[11px] font-semibold tracking-wide text-amber-400 block truncate">หมวดหมู่</span>
+                    <h2 id="drawerTitle" class="text-base sm:text-lg font-bold text-white leading-snug">หัวข้อรายละเอียด</h2>
+                </div>
+            </div>
+            <button id="closeDrawerBtn" type="button" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition shrink-0" title="ปิดหน้าต่าง">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        <!-- Drawer Scrollable Body -->
+        <div class="p-4 sm:p-5 flex-1 overflow-y-auto space-y-4">
+            <!-- Copyable Syntax / Chat Action Box -->
+            <div id="drawerSyntaxSection" class="hidden">
+                <label class="text-xs font-medium text-slate-400 mb-1.5 block">รูปแบบคำสั่ง / ข้อความแชท RP (คลิกคัดลอก)</label>
+                <div class="flex items-center justify-between gap-2 bg-slateDark-950 border border-slate-800 rounded-xl p-3">
+                    <code id="drawerSyntax" class="font-mono text-sm text-amber-300 break-all"></code>
+                    <button id="copySyntaxBtn" type="button" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition shrink-0" title="คัดลอกข้อความ">
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                        <span>คัดลอก</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Badges -->
+            <div id="drawerBadges" class="flex flex-wrap gap-1.5"></div>
+
+            <!-- 6-Color Severity Scale for Discord Article 41 -->
+            <div id="drawerSeverityScale" class="hidden bg-slateDark-950/90 border border-slate-800 rounded-2xl p-3.5 space-y-2">
+                <h4 class="text-xs font-semibold text-indigo-300">สัญลักษณ์ระดับความรุนแรงของโทษ 6 สี (มาตรา 41)</h4>
+                <div class="grid grid-cols-2 gap-1.5 text-xs">
+                    <div class="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-2.5 py-1.5 text-emerald-300">
+                        <span class="w-3 h-3 rounded-full bg-emerald-500 shrink-0"></span>
+                        <span>1. สีเขียว · ตักเตือน</span>
+                    </div>
+                    <div class="flex items-center gap-2 bg-slate-200/10 border border-slate-300/30 rounded-lg px-2.5 py-1.5 text-slate-200">
+                        <span class="w-3 h-3 rounded-full bg-slate-200 shrink-0"></span>
+                        <span>2. สีขาว · โทษขั้นต้น</span>
+                    </div>
+                    <div class="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-2.5 py-1.5 text-yellow-300">
+                        <span class="w-3 h-3 rounded-full bg-yellow-400 shrink-0"></span>
+                        <span>3. สีเหลือง · ปานกลาง</span>
+                    </div>
+                    <div class="flex items-center gap-2 bg-orange-500/10 border border-orange-500/30 rounded-lg px-2.5 py-1.5 text-orange-300">
+                        <span class="w-3 h-3 rounded-full bg-orange-500 shrink-0"></span>
+                        <span>4. สีส้ม · ค่อนข้างรุนแรง</span>
+                    </div>
+                    <div class="flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 rounded-lg px-2.5 py-1.5 text-rose-300">
+                        <span class="w-3 h-3 rounded-full bg-rose-500 shrink-0"></span>
+                        <span>5. สีแดง · โทษรุนแรง</span>
+                    </div>
+                    <div class="flex items-center gap-2 bg-zinc-900 border border-zinc-600 rounded-lg px-2.5 py-1.5 text-zinc-200">
+                        <span class="w-3 h-3 rounded-full bg-zinc-950 border border-zinc-400 shrink-0"></span>
+                        <span>6. สีดำ · แบนถาวรสูงสุด</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Full Description -->
+            <div class="bg-slateDark-950/75 border border-slate-800/90 rounded-2xl p-4">
+                <h3 class="text-xs font-semibold text-slate-400 mb-2">รายละเอียดฉบับเต็ม</h3>
+                <p id="drawerDescription" class="text-sm text-slate-200 leading-relaxed whitespace-pre-line"></p>
+            </div>
+
+            <!-- Green (Correct) & Red (Incorrect) Examples -->
+            <div id="drawerExamplesSection" class="hidden space-y-2.5">
+                <div id="drawerDoBox" class="hidden bg-emerald-950/45 border border-emerald-500/40 rounded-2xl p-3.5">
+                    <h4 class="text-xs font-semibold text-emerald-400 mb-1.5 flex items-center gap-1.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0"></span>
+                        ตัวอย่างที่ถูกต้อง / ควรทำ (สีเขียว)
+                    </h4>
+                    <p id="drawerDoText" class="text-xs sm:text-[13px] text-emerald-100/95 leading-relaxed whitespace-pre-line"></p>
+                </div>
+
+                <div id="drawerDontBox" class="hidden bg-rose-950/45 border border-rose-500/40 rounded-2xl p-3.5">
+                    <h4 class="text-xs font-semibold text-rose-400 mb-1.5 flex items-center gap-1.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0"></span>
+                        ตัวอย่างที่ไม่ควรทำ / ผิดกฎ (สีแดง)
+                    </h4>
+                    <p id="drawerDontText" class="text-xs sm:text-[13px] text-rose-100/95 leading-relaxed whitespace-pre-line"></p>
+                </div>
+            </div>
+
+            <!-- Optional Note -->
+            <div id="drawerNoteBox" class="hidden bg-amber-950/30 border border-amber-500/30 rounded-2xl p-3.5">
+                <h4 class="text-xs font-semibold text-amber-400 mb-1">หมายเหตุเพิ่มเติม</h4>
+                <p id="drawerNoteText" class="text-xs sm:text-[13px] text-amber-100/90 leading-relaxed whitespace-pre-line"></p>
+            </div>
+
+            <!-- Sub-Items Quick Navigation -->
+            <div id="drawerChildrenSection" class="hidden">
+                <h3 class="text-xs font-semibold text-slate-400 mb-2">รายการย่อยในกิ่งนี้ (<span id="drawerChildrenCount">0</span>)</h3>
+                <div id="drawerChildrenList" class="space-y-1.5"></div>
+            </div>
+        </div>
+
+        <!-- Drawer Footer -->
+        <div class="p-4 border-t border-slate-800 bg-slateDark-950/70 flex items-center justify-between gap-2 shrink-0">
+            <button id="drawerExpandToggleBtn" type="button" class="hidden flex-1 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium items-center justify-center gap-1.5 transition">
+                <span id="drawerExpandToggleText">ขยายกิ่งย่อยนี้</span>
+            </button>
+            <button id="drawerDoneBtn" type="button" class="flex-1 py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold transition">
+                ปิดหน้าต่าง
+            </button>
+        </div>
+    </aside>
+
+    <script>
+        /**
+         * ============================================================================
+         * 1. INLINE SVG ICON REGISTRY (ZERO EXTERNAL DEPENDENCIES)
+         * ============================================================================
+         */
+        const svgIcons = {
+            crown: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"/></svg>',
+            clapperboard: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 4"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>',
+            crosshair: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>',
+            car: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>',
+            user: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+            siren: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18v-6a5 5 0 1 1 10 0v6"/><path d="M5 21a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-1a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2z"/><path d="M21 12h1M18.5 4.5 18 5M2 12h1M12 2v1M4.929 4.929l.707.707"/></svg>',
+            terminal: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
+            shield: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>',
+            hammer: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m15 12-8.5 8.5c-.83.83-2.17.83-3 0 0 0 0 0 0 0a2.12 2.12 0 0 1 0-3L12 9"/><path d="M17.64 15 22 10.64"/><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"/></svg>',
+            scale: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>',
+            file: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+            alert: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+            lock: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+        };
+
+        /**
+         * ============================================================================
+         * 2. DATA FACTORY HELPERS
+         * ============================================================================
+         */
+        function makeCmd(id, syntax, subtitle, rank, description) {
+            return {
+                id,
+                title: syntax,
+                subtitle,
+                theme: rank === 'Owner' ? 'sky' : (rank === 'Admin' ? 'indigo' : 'amber'),
+                icon: 'terminal',
+                syntax,
+                badges: [`สิทธิ์: ${rank}`, 'Prefix :'],
+                categoryPath: `คำสั่งในเซิร์ฟเวอร์ • ระดับ ${rank}`,
+                description
+            };
+        }
+
+        function makeArticle(num, catNum, title, subtitle, description, extraBadges = [], isSevere = false, hasSeverityScale = false) {
+            return {
+                id: `discord-m${num}`,
+                title: `มาตรา ${num}: ${title}`,
+                subtitle,
+                theme: isSevere ? 'rose' : 'indigo',
+                icon: isSevere ? 'alert' : 'file',
+                badges: [`หมวดที่ ${catNum}`, `มาตรา ${num}`, ...extraBadges],
+                categoryPath: `กฎ Discord ฉบับแก้ไข • หมวดที่ ${catNum}`,
+                description,
+                hasSeverityScale
+            };
+        }
+
+        function makeRpRule(num, title, subtitle, description, doExample, dontExample, note = '', syntax = '', extraBadges = []) {
+            return {
+                id: `rp-rule-${num}`,
+                title: `ข้อ ${num}: ${title}`,
+                subtitle,
+                theme: 'emerald',
+                icon: 'clapperboard',
+                syntax,
+                badges: [`กฎโรลเพลย์ ข้อ ${num}`, ...extraBadges],
+                categoryPath: `กฎการโรลเพลย์ในเซิร์ฟเวอร์ • ข้อ ${num}`,
+                description,
+                doExample,
+                dontExample,
+                note
+            };
+        }
+
+        /**
+         * ============================================================================
+         * 3. COMPLETE LEFT-TO-RIGHT MIND MAP DATA
+         *    - Root on Left -> All 3 Main Branches Expand to the Right
+         * ============================================================================
+         */
+        const mindMapData = {
+            id: 'root',
+            title: 'Bangkok City Roleplay',
+            subtitle: 'คลิกที่โหนดเพื่ออ่าน หรือกด + / - ขยายกิ่งขวา',
+            theme: 'gold',
+            icon: 'crown',
+            expanded: true,
+            categoryPath: 'ศูนย์กลางกฎระเบียบและคำสั่งเซิร์ฟเวอร์',
+            description: `ผังโครงสร้างกฎระเบียบและคำสั่งทั้งหมดของเซิร์ฟเวอร์ Bangkok City Roleplay แตกกิ่งออกทางด้านขวา 3 สายหลัก:
+
+1. กฎการโรลเพลย์ในเซิร์ฟเวอร์ (ครบทั้ง 24 ข้อ · แบ่ง 4 หมวด A–D)
+2. คำสั่งในเซิร์ฟเวอร์ (42 คำสั่ง · Prefix : แบ่งตามสิทธิ์ Owner / Admin / Moderator)
+3. กฎ Discord ฉบับแก้ไข (6 หมวด · ครบทุก 60 มาตรา)`,
+            note: 'จุดตั้งต้นอยู่ที่หัวข้อหลักด้านซ้าย กิ่งย่อยทั้งหมดขยายออกทางด้านขวาอย่างเป็นระเบียบ',
+            children: [
+                /* =====================================================================
+                 * BRANCH 1: IN-GAME ROLEPLAY RULES (ALL 24 RULES · GROUPS A-D)
+                 * ===================================================================== */
+                {
+                    id: 'rp-rules-root',
+                    title: 'กฎการโรลเพลย์ในเซิร์ฟเวอร์ (24 ข้อ)',
+                    subtitle: 'หมวด A–D • ครบทั้งข้อ 1 ถึง ข้อ 24',
+                    theme: 'emerald',
+                    icon: 'clapperboard',
+                    expanded: false,
+                    categoryPath: 'สายที่ 1 • กฎการโรลเพลย์ในเซิร์ฟเวอร์',
+                    description: `เพื่อให้การสมบทบาทหรือการโรลเพลย์ในเซิร์ฟเวอร์นั้นเป็นระเบียบและไม่มีเหตุการณ์โรลเพลย์ผิดๆ หรือไม่เป็นไปตามที่ต้องการของเซิร์ฟเวอร์ หากพบการกระทำผิดจะมีการลงโทษตามกฎทั้งหมด 24 ข้อ (แบ่งเป็น 4 หมวด A–D)`,
+                    note: 'ในหน้าต่างรายละเอียดแต่ละข้อมีแถบสีเขียว (ตัวอย่างที่ถูกต้อง) และสีแดง (ตัวอย่างที่ไม่ควรทำ)',
+                    children: [
+                        /* หมวด A: ชีวิต การต่อสู้ และอาวุธปืน */
+                        {
+                            id: 'rp-cat-a',
+                            title: 'หมวด A: ชีวิต การต่อสู้ และอาวุธปืน',
+                            subtitle: 'ข้อ 1–4, 9–10, 21 (RDM, NLR, Respawn, ปืน, Safe Zone)',
+                            theme: 'emerald',
+                            icon: 'crosshair',
+                            expanded: false,
+                            categoryPath: 'กฎการโรลเพลย์ • หมวด A',
+                            description: 'กติกาเกี่ยวกับการสังหารผู้เล่น (RDM) การห้ามล้างแค้นหลังเกิดใหม่ (NLR) การกด Respawn กติกาการต่อสู้และกระโดดหลบกระสุน การใช้อาวุธปืน (-gg-) การจบโรล 5 นาที และเขตปลอดภัย (Safe Zone)',
+                            children: [
+                                makeRpRule(
+                                    1,
+                                    'ห้ามสังหารโดยไม่มีเหตุผล (RDM)',
+                                    'เหตุผลต้องมีที่มาที่ไปจริง ไม่ใช่สร้างเรื่องเองลอยๆ',
+                                    'ห้ามสังหารผู้เล่นโดยไม่มีเหตุผลหรือเหตุผลนั้นคลุมเครือ การสังหารผู้เล่นคนอื่นๆ โดยไม่มีเหตุผลใดๆ หรือคลุมเครือจะเข้าข่ายการสังหารผู้เล่นโดยไม่มีผลใดๆ ทั้งสิ้น',
+                                    '• นาย จ เข้ามานาย ข และทำการยิงนาย ข แล้วนาย ข สงสัยและถามว่า "เอ้าทำไมถึงยิง" นาย จ ให้เหตุผลว่า "มีคนจ้างผมให้สังหารคุณเพราะคุณขโมยรถของเขา" โดยที่นาย ข แอบขโมยรถจริงๆ\n• นาย จ เข้ามานาย ข และแทงนาย ข เสียชีวิตโดยมีเหตุผลว่านาย ข แอบพังบ้านเข้ามา',
+                                    '• นาย จ เข้ามาหานาย ข และทำการสังหารนาย ข เสียชีวิตทันทีโดยไม่มีเหตุผลใดๆ\n• นาย จ เข้ามาหานาย ข และทำการสังหารทันที เมื่อนาย ข ถามว่า "เอ้าทำไมยิง?" นาย จ ตอบว่า "ผมโรลเพลย์เป็นนักฆ่า"',
+                                    'เหตุผลนั้นต้องมีที่มาที่ไปไม่ใช่ว่าจะสร้างเรื่องเองเพื่อหาเหตุผลสังหารผู้เล่นโดยที่อีกฝ่ายไม่รู้อะไร',
+                                    '',
+                                    ['RDM']
+                                ),
+                                makeRpRule(
+                                    2,
+                                    'ห้ามล้างแค้นหลังเกิดใหม่ (NLR)',
+                                    'เกิดใหม่ถือว่าจำเหตุการณ์ไม่ได้ ยกเว้นรอดจากโรงพยาบาล',
+                                    'ห้ามล้างแค้นผู้เล่นหากโดนปิดชีวิตหรือกดเกิดใหม่ หากผู้เล่นนั้นถูกสังหารแต่ว่าเกิดใหม่แล้วตามล้างแค้นผู้เล่นที่สังหารจะเข้าข่ายการล้างแค้นทันที',
+                                    '• นาย ป สังหารนาย ร บาดเจ็บสาหัส แล้วเข้าโรงพยาบาลเป็นเวลานาน จากนั้นนาย ร ออกจากโรงพยาบาลและตามหานาย ป และเมื่อเขาเจอก็ปิดชีวิตนาย ป ลง',
+                                    '• นาย ป สังหารนาย ร เสียชีวิตแล้วนาย ร กดเกิดใหม่แล้วตามฆ่านาย ป ทันที',
+                                    'กรณีที่ถูกยิงเสียชีวิตแต่ไม่โดนอีกฝ่ายจบโรลเพลย์หรือปิดชีวิตตัวละครที่คุณสร้างถาวรนั้น จะนับว่าบาดเจ็บสาหัส และหากในช่วงนั้นไม่มีกู้ภัยและคุณเกิดใหม่จะนับว่าคุณจำเหตุการณ์ก่อนหน้านี้ไม่ได้!',
+                                    '',
+                                    ['NLR']
+                                ),
+                                makeRpRule(
+                                    3,
+                                    'ห้ามกดเกิดใหม่เมื่อมีกู้ภัย / นอกเขตปลอดภัย',
+                                    'ปุ่ม Respawn ใช้เปลี่ยนชุดหรือแก้บัคใน Safe Zone เท่านั้น',
+                                    'ห้ามกดเกิดใหม่โดยที่มีหน่วยดับเพลิงกู้ภัยในเซิร์ฟเวอร์ และการ Respawn นอกเขตปลอดภัยและได้รับดาเมจหรือโรลเพลย์มาก่อนหน้านี้จะผิดกฎเช่นกัน',
+                                    '• นาย ส เสียชีวิตโดยไม่ทราบสาเหตุเลยรอกู้ภัยมารับตัวคุณและนำส่งโรงพยาบาล\n• นาย ส กด Respawn ผ่านหน้าต่าง ESC โดยอยู่ในเขตปลอดภัยและยังไม่ได้รับดาเมจหรือเริ่มโรลเพลย์ใดๆ ทั้งนั้น',
+                                    '• นาย ส เสียชีวิตโดยไม่ทราบสาเหตุเกิดกด Respawn now หรือ เกิดใหม่ทันที ทั้งที่มีหน่วยกู้ภัยในเซิร์ฟเวอร์\n• นาย ส กด Respawn ผ่านหน้าต่าง ESC เพื่อหวังจะไปที่จุดเกิดของประชาชนทันที',
+                                    'กฎข้อนี้จะสอดคล้องกับตัวกฎข้อที่หนึ่งและการ Respawn ไว้ใช้ในการเปลี่ยนชุดหรือเกิดบัคที่ไม่สามารถทำบางอย่างได้เท่านั้น!',
+                                    '',
+                                    ['Respawn']
+                                ),
+                                makeRpRule(
+                                    4,
+                                    'ข้อห้ามในการต่อสู้ (ห้ามกระโดดยิง / สแปมกระโดด)',
+                                    'กระโดดหลบกระสุนได้ 1 ครั้ง และกระโดดซ้ำได้หลัง 15 วินาที',
+                                    'การต่อสู้นั้นตั้งแต่การยิงปืนและการสู้ระยะประชิด ต้องไม่กระทำพฤติกรรมเอาเปรียบ ห้ามกระโดดยิงเด็ดขาด และห้ามกดกระโดดย้ำๆ หรือสแปมปุ่มกระโดดขณะปะทะ',
+                                    '• ปะทะกับผู้เล่นคนอื่นๆ โดยกระโดดหลบกระสุนแค่ครั้งเดียวเพื่อหาที่หลบ (ห้ามกระโดดแล้วยิง) และรอครบ 15 วินาทีจึงจะกระโดดได้อีกครั้ง',
+                                    '• กระโดดย้ำๆ แล้วยิง\n• ใช้บัคที่สามารถยิงทะลุหรือเอาเปรียบผู้เล่น',
+                                    'ถึงแม้จะกระโดดได้แต่ห้ามกระโดดยิงเด็ดขาด และการกระโดดนั้นห้ามกดย้ำๆ หรือสแปมปุ่มกระโดด โดยหากจะกระโดดหลบกระสุน 1 ครั้ง จะกระโดดได้อีกครั้งหลังผ่านไป 15 วินาที',
+                                    '',
+                                    ['กติกาการต่อสู้']
+                                ),
+                                makeRpRule(
+                                    9,
+                                    'กฎการใช้ปืนและการจ้างวานลอบยิง',
+                                    'พิมพ์ -gg- ก่อนชักปืน (ยกเว้นปืนพก & MP5)',
+                                    `การใช้ปืนภายในเกมทุกครั้ง "ห้ามทำสิ่งเหล่านี้":
+• ห้ามกระโดดหรือทำสิ่งใดที่ได้เปรียบก่อนใช้งานอาวุธ (เช่น กระโดดหลบกระสุนและยิงปืนสวนกลับ)
+• ห้ามใช้คำดูถูกหลังจากจัดการผู้เล่นภายในเกม เพื่อป้องกันการทะเลาะกันทั้ง 2 ฝ่าย (หากเจอถือว่ามีส่วนร่วมทำให้เซิร์ฟเวอร์เสียชื่อเสียง จะถูกเตือนหรือแบน)
+• กรณีจะยิงอีกฝ่าย ต้องมีเหตุผลที่แน่ชัดและจำเป็นในการใช้ปืน (ยกเว้นกรณีมีอีเว้นท์)
+• ทุกครั้งที่ใช้อาวุธปืน นอกเหนือจากปืนพก ต้องพิมพ์ -gg- หรือ gg ทุกครั้งก่อนใช้งาน (ส่วนปืนพกและปืน MP5 สามารถหยิบใช้งานได้เลยโดยไม่ต้องพิมพ์ gg)
+• การยิงทีเผลอหรือการลอบยิงสามารถทำได้แต่ต้องมีเงื่อนไข เช่น การจ้างวานต้องมีหลักฐานการโอนเงินจริง ห้ามโอนคืนเล่นตุกติกเพื่อจ้างซ้ำ`,
+                                    '• พิมพ์ -gg- หรือ gg ก่อนหยิบอาวุธปืน (นอกเหนือจากปืนพกและ MP5)\n• นาย A จ้างนาย B ให้ยิงนาย C โดยโอนค่าจ้างตามที่ตกลงจริงพร้อมหลักฐาน และนาย B ลอบสังหารนาย C ด้วยอาวุธระยะไกล',
+                                    '• เดินเข้ามาแล้วชักปืนยิงอีกฝ่าย พอถามเหตุผลกลับตอบว่า "คุณผมมีแก๊งไง มันต้องหาเรื่อง"\n• นาย A จ้างนาย B ยิงนาย C เสร็จแล้วนาย B โอนเงินคืนให้นาย A เพื่อจ้างยิงนาย C ใหม่ (เล่นตุกติก = แบนอย่างเดียว)',
+                                    '',
+                                    '-gg-',
+                                    ['อาวุธปืน', '-gg-']
+                                ),
+                                makeRpRule(
+                                    10,
+                                    'การจบโรลของอีกฝ่าย (ครบ 5 นาที)',
+                                    'ห้ามยิงหมอ/กู้ภัย (ยิง "ล้อ" รถเพื่อขัดขวางได้)',
+                                    `เงื่อนไขในการจบโรลอีกฝ่ายคือต้องให้ผู้ที่เสียชีวิตไม่ได้รับการรักษาภายใน 5 นาที เมื่อผ่านครบ 5 นาทีผู้ที่เสียชีวิตจะสามารถเกิดใหม่ได้โดยถือว่าเป็นคนใหม่ ไม่มีล้างแค้นหรืออะไรทั้งสิ้น
+• ผู้ที่จัดการอีกฝ่ายได้จะสามารถขัดขวางพยาบาลหรือหมอได้ เพื่อจบโรลอีกฝ่ายโดยที่ห้ามทำการยิงบุคลากรทางการแพทย์ แต่สามารถยิง "ล้อ" เพื่อขัดขวางเจ้าหน้าที่ได้
+• กรณีที่ผู้ร้ายยิงหมอหรือกู้ภัยที่กำลังช่วยชีวิต หากถูกจับผู้กระทำความผิดจะจบโรลในทันที (ประหาร / ตำรวจสามารถจัดการจับเป็นหรือตายได้ทั้งหมด)`,
+                                    '• ยิง "ล้อ" รถพยาบาลเพื่อขัดขวางไม่ให้เจ้าหน้าที่เข้าไปช่วยผู้เสียชีวิตจนครบเวลา 5 นาที',
+                                    '• ยิงตัวบุคลากรทางการแพทย์ (หมอหรือหน่วยกู้ภัย) ที่กำลังเข้ามาช่วยชีวิตผู้บาดเจ็บ',
+                                    '',
+                                    '',
+                                    ['จบโรล 5 นาที', 'การแพทย์']
+                                ),
+                                makeRpRule(
+                                    21,
+                                    'ห้ามสังหารผู้เล่นในพื้นที่ปลอดภัย (Safe Zone)',
+                                    'ยกเว้นติด WANTED หรือกำลังต่อสู้กับใครบางคน',
+                                    'ห้ามสังหารผู้เล่นในพื้นที่ปลอดภัย พื้นที่ปลอดภัยคือพื้นที่ที่จะไม่สามารถทำการสังหารผู้เล่นได้ เพื่อป้องกันการถูกฆ่าโดยพึ่งเกิดใหม่หรือพึ่งเข้าเกม',
+                                    '• เคารพเขตพื้นที่ปลอดภัย ไม่โจมตีผู้เล่นที่พึ่งเกิดใหม่หรืออยู่ในพื้นที่ปลอดภัย',
+                                    '• สังหารผู้เล่นทั่วไปที่อยู่ในพื้นที่ปลอดภัยโดยไม่มีการติด WANTED หรือการต่อสู้มาก่อน',
+                                    'พื้นที่ปลอดภัยนั้น หากคุณติด WANTED หรือมีการสู้กับใครบางคน ตัวพื้นที่ปลอดภัยจะไม่สามารถคุ้มครองคุณได้!',
+                                    '',
+                                    ['Safe Zone']
+                                )
+                            ]
+                        },
+
+                        /* หมวด B: ยานพาหนะและการขับขี่ */
+                        {
+                            id: 'rp-cat-b',
+                            title: 'หมวด B: ยานพาหนะและการขับขี่',
+                            subtitle: 'ข้อ 5, 14, 17 (ไล่ล่า, ตั้งค่าเกม, เข็มขัด & อุบัติเหตุ)',
+                            theme: 'teal',
+                            icon: 'car',
+                            expanded: false,
+                            categoryPath: 'กฎการโรลเพลย์ • หมวด B',
+                            description: 'กติกาการขับขี่ยานพาหนะ การห้ามซ่อมหรือเสกรถใหม่ขณะถูกไล่ล่า การตั้งค่าตัวเกม Bit Cities และการแสดงบทบาทเมื่อเกิดอุบัติเหตุ',
+                            children: [
+                                makeRpRule(
+                                    5,
+                                    'ห้ามซ่อมหรือเรียกยานพาหนะใหม่ขณะถูกไล่ล่า',
+                                    'มีหมายจับหรือโดนไล่ล่า ห้ามเข้าร้านซ่อมหรือเรียกรถใหม่',
+                                    'ห้ามซ่อมยานพาหนะหรือเรียกยานพาหนะใหม่ขณะที่ถูกไล่ล่าหรือถูกหมายจับ หากผู้เล่นมีหมายจับหรือถูกไล่ล่าโดยผู้เล่นคนอื่นแล้วทำการซ่อมยานพาหนะหรือเรียกยานพาหนะคันใหม่ จะนับว่าทำผิดกฎข้อนี้ทันที',
+                                    '• นาย บ ขับยานพาหนะหนีต่อไปถึงแม้จะถูกไล่ล่าและยานพาหนะเสียหายมากก็ตาม',
+                                    '• นาย บ กำลังหลบหนีจากตำรวจแต่ยานพาหนะใกล้เสียหายเลยทำการเข้าร้านซ่อม\n• นาย บ กำลังหลบหนีแต่ยานพาหนะเสียหายและช้าเกินไปเลยเรียกยานพาหนะคันใหม่ที่จุดเรียกยานพาหนะ',
+                                    'หากกรณีตำรวจยานพาหนะเสียหายขณะไล่ล่าผู้ร้ายจะสามารถเรียกยานพาหนะคันใหม่ได้ที่สถานีตำรวจหรือนายอำเภอได้เท่านั้น แต่หากซ่อมยานพาหนะสามารถไปที่ร้านซ่อมได้ทันที',
+                                    '',
+                                    ['ยานพาหนะ']
+                                ),
+                                makeRpRule(
+                                    14,
+                                    'การตั้งค่าในตัวเกม (Bit Cities)',
+                                    'ต้องปิด Auto Car Flip & Overhead Combat Indicator',
+                                    `ผู้เล่นที่เข้ามาในเซิร์ฟเวอร์ Bit Cities ของทางตัวเกมแล้วนั้น ท่านจะต้องทำการตั้งค่าตามที่เซิร์ฟเวอร์กำหนดไว้ดังนี้:
+1. ปิดใช้งานการพลิกรถอัตโนมัติ (Auto Car Flip = Disabled) และห้ามกดปุ่ม F หรือปุ่มใดๆ ที่ทำให้รถนั้นพลิกเอง
+2. ปิดการแสดงไอคอนอาวุธปืน (Overhead Combat Indicator = Disabled) เพื่อไม่ให้เห็นว่าผู้เล่นคนไหนมีอาวุธปืน`,
+                                    '• ตั้งค่า Auto Car Flip เป็น Disabled / ปิดใช้งาน\n• ตั้งค่า Overhead Combat Indicator เป็น Disabled / ปิดใช้งาน',
+                                    '• เปิดใช้งาน Auto Car Flip หรือกดปุ่ม F พลิกรถยนต์เอง รวมถึงเปิดแสดงไอคอนอาวุธปืนบนหัวผู้เล่น',
+                                    '',
+                                    '',
+                                    ['ตั้งค่าเกม']
+                                ),
+                                makeRpRule(
+                                    17,
+                                    'การโรลเพลย์ด้วยยานพาหนะทุกชนิด',
+                                    'พิมพ์ -รัดเข็มขัด- | ชนแรง/คว่ำ = รถพัง & กด R นอนเจ็บ',
+                                    `• ขับรถชนคน ตึก กำแพง รถ ต้นไม้ ต้องหยุดรถและเช็คสภาพหรือแสดงอาการ ไม่ใช่ชนแล้วขับหนี
+• ขับความเร็วสูงจนเกิดอุบัติเหตุหรือพลิกคว่ำ ถือว่าได้รับบาดเจ็บและรถเสียหายขับต่อไม่ได้ทันที (ชนห้องเครื่องอย่างแรง = เครื่องพังขับต่อไม่ได้ สังเกตเมื่อรถไฟไหม้)
+• อุบัติเหตุเบาถือว่าบาดเจ็บเล็กน้อย อุบัติเหตุรุนแรงถือว่าบาดเจ็บปานกลางถึงสาหัส
+• กรณีรถยนต์ให้พิมพ์ -รัดเข็มขัด- หากไม่ได้รัดแล้วชนรุนแรงจะกระเด็นออกนอกรถ ต้องออกจากรถและกดปุ่ม "R" บนคีย์บอร์ด (Ragdoll) หรือท่าทางนอน (Laydown) ในมือถือ (รถ ATV ไม่มีเข็มขัดจะบาดเจ็บสาหัสกว่า)
+• หากถูกยานพาหนะชนต้องกดปุ่ม "R" (Ragdoll) หรือปุ่มท่าทางนอนลง (Laydown)
+• ห้ามกดปุ่ม F พลิกรถยนต์ ยกเว้นรถ ATV ขนาดเล็กสามารถกด Flip ได้เนื่องจากมีน้ำหนักเบา`,
+                                    '• พิมพ์ -รัดเข็มขัด- ก่อนขับรถยนต์\n• เมื่อรถประสบอุบัติเหตุรุนแรงหรือพลิกคว่ำ ให้หยุดรถและกด R (Ragdoll) หรือ Laydown แสดงอาการบาดเจ็บ ไม่ขับรถที่คว่ำหรือเครื่องพังต่อ',
+                                    '• ขับรถชนสิ่งต่างๆ หรือพลิกคว่ำแล้วลุกออกจากรถวิ่งหนี หรือกดปุ่ม F พลิกรถยนต์กลับมาขับต่อเหมือนไม่มีอะไรเกิดขึ้น',
+                                    '',
+                                    '-รัดเข็มขัด-',
+                                    ['-รัดเข็มขัด-', 'Ragdoll']
+                                )
+                            ]
+                        },
+
+                        /* หมวด C: การกระทำ บทบาท และการใช้ชีวิต */
+                        {
+                            id: 'rp-cat-c',
+                            title: 'หมวด C: การกระทำ บทบาท และการใช้ชีวิต',
+                            subtitle: 'ข้อ 6–7, 18, 20, 22–23 (ชุด, รพ., แชท, Fear RP, กินนอน, บ้าน)',
+                            theme: 'emerald',
+                            icon: 'user',
+                            expanded: false,
+                            categoryPath: 'กฎการโรลเพลย์ • หมวด C',
+                            description: 'ข้อบังคับเรื่องรูปลักษณ์ตัวละคร การพักรักษาตัวที่โรงพยาบาล การพิมพ์การกระทำในแชท ความสมจริงทางอารมณ์ ความหิวและการพักผ่อน และการมีที่อยู่อาศัย',
+                            children: [
+                                makeRpRule(
+                                    6,
+                                    'การแต่งตัวและแพ็คเกจตัวละครที่อนุมัติ',
+                                    'ห้าม Aura ชุดสัตว์ ปีก สีผิวแฟนตาซี (ใช้แพ็คเกจมาตรฐาน)',
+                                    `เพื่อไม่ให้เกิดการเอาเปรียบผู้เล่นอื่นๆ มีข้อกำหนดการแต่งตัวดังนี้:
+• ของแต่งตัวที่ห้ามแต่ง: ประเภท Aura (ออร่า), ชุดสัตว์, ปีก, ไอเทมที่มีเอฟเฟกต์, Layer clothing ขนาดใหญ่
+• แพ็คเกจตัวละครที่อนุมัติ: Robloxian 1.0 (ตัวละครเหลี่ยมๆ หรือไม่สวมแพ็คเกจ), Robloxian 2.0, Roblox boy, Woman, Man, Denis
+• สีผิว: สีผิวต้องเป็นสีผิวที่มีตามในชีวิตจริงเท่านั้น`,
+                                    '• ใช้แพ็คเกจ Robloxian 1.0 / 2.0 / Roblox boy / Woman / Man / Denis และใช้สีผิวตามชีวิตจริง',
+                                    '• ใส่ปีก มีออร่าเรืองแสง ตัวจิ๋ว ตัวมันฝรั่ง ตัวประหลาด หรือใช้สีผิวแฟนตาซี',
+                                    'ของแต่งตัวบางประเภทที่เข้าข่ายเอาเปรียบหรือทำลายประสบการณ์การโรลเพลย์จะถูกเตะออกจากเซิร์ฟเวอร์ทันที โดยหากต้องการเข้าอีกรอบต้องปรับเปลี่ยนตัวละครก่อน',
+                                    '',
+                                    ['การแต่งตัว']
+                                ),
+                                makeRpRule(
+                                    7,
+                                    'การนอนพักรักษาตัวที่โรงพยาบาล',
+                                    'ห้ามหนีออกก่อนเวลา (ไม่เกิน 10 นาที / ไม่แจ้ง = 5 นาที)',
+                                    'หากถูกนำส่งโรงพยาบาลแล้วนอนพัก ห้ามออกจนกว่าถึงเวลาที่กำหนด หากผู้เล่นถูกนำส่งไปโรงพยาบาลและหมอแจ้งว่าจะต้องอยู่เป็นเวลา [เวลาที่หมอกำหนดไว้] นาที จะต้องห้ามออกไปไหนจนกว่าจะครบ',
+                                    '• นาย ร อยู่ในโรงพยาบาลเป็นเวลา 5 นาที (หรือตามเวลาที่หมอกำหนดไม่เกิน 10 นาที) แล้วออกจากโรงพยาบาลในที่สุด',
+                                    '• นาย ร แอบหนีออกจากโรงพยาบาลทั้งที่ยังไม่ถึงเวลาออกที่กำหนด',
+                                    'หากหมอกำหนดเวลาเกิน 10 นาทีนั้นจะไม่สามารถทำได้ และหากหมอไม่แจ้งเวลาจะต้องอยู่ในนั้นจนครบ 5 นาที',
+                                    '',
+                                    ['โรงพยาบาล']
+                                ),
+                                makeRpRule(
+                                    18,
+                                    'การพิมพ์การกระทำในช่องแชท (Action Chat)',
+                                    'พิมพ์บอกการกระทำในแชท เช่น - เปิดประตูบ้าน -',
+                                    'การกระทำจะต้องมีการพิมพ์ในช่องแชทของเกมเพื่อให้การโรลเพลย์มีความสมจริงซีเรียสขึ้น และไม่ได้เพียงแค่เดินทำสิ่งต่างๆ ไปเรื่อย เพื่อให้อีกฝ่ายสามารถรับรู้ว่าคุณกำลังทำอะไร และเพิ่มระยะเวลาในการกระทำต่างๆ จากระยะเวลาการพิมพ์ไม่ให้เร็วเกินไป',
+                                    '• พิมพ์บอกการกระทำในแชท เช่น - เปิดประตูบ้าน - หรือพิมพ์ขั้นตอนการเติมน้ำมันอย่างเป็นขั้นเป็นตอนที่เข้าใจง่าย',
+                                    '• เดินไปทำกิจกรรมหรือเปิดประตูทันทีโดยไม่พิมพ์บอกการกระทำในช่องแชทเลย',
+                                    'หากการกระทำที่คุณกำลังทำไม่มีอันไหนตรงกับชุดคำสั่งการกระทำ ให้ทำการสร้างชุดคำสั่งใหม่ของตัวเองขึ้นมาแล้วต้องเป็นคำที่อีกฝ่ายรับรู้และเข้าใจได้',
+                                    '- เปิดประตูบ้าน -',
+                                    ['Action Chat']
+                                ),
+                                makeRpRule(
+                                    20,
+                                    'ความรู้สึกกลัว ตกใจ และการรักษาชีวิต (Fear RP)',
+                                    'ได้ยินเสียงปืน/เห็นอาวุธต้องหนีหรือหมอบ (หมอห้ามฝ่าดงกระสุน)',
+                                    'ตัวละครผู้เล่นจะต้องมีความรู้สึกที่ตกใจ รู้สึกกลัว ความหวาดระแวง และต้องรักษาชีวิตตนเองเมื่อเกิดเหตุการณ์อันตรายถึงชีวิต เพื่อป้องกันการโรลเพลย์ที่ไม่สมจริงและรักษาประสบการณ์การเล่นของเซิร์ฟเวอร์',
+                                    '• ได้ยินเสียงปืนดังลั่นในร้านค้าหรือเห็นคนถือปืนกลางชุมชน แล้วรีบหมอบหลบหรือวิ่งหนีเอาชีวิตรอด',
+                                    '• มีผู้ร้ายกราดยิงแต่ประชาชนขับรถตามปกติไม่สนใจ\n• มีเสียงปืนในร้านค้าแต่ประชาชนยังคงนั่งเฉยๆ ไม่ไปไหน\n• หมอวิ่งฝ่าดงกระสุนเข้าไปช่วยคนโดยไม่สนใจว่าจะมีกระสุนลอยผ่านหัว',
+                                    'ต่อให้ตัวละครคุณไม่มีความกลัว แต่ก็ต้องมีความรู้สึกที่จะต้องรักษาชีวิตตัวเองด้วย!',
+                                    '',
+                                    ['Fear RP']
+                                ),
+                                makeRpRule(
+                                    22,
+                                    'ความรู้สึกเหนื่อย ความอยากอาหาร และการพักผ่อน',
+                                    'ต้องนอนพักผ่อน กินอาหาร และดื่มน้ำเพื่อความสมจริง',
+                                    `ตัวละครของคุณก็เหมือนคนๆ หนึ่งที่มีความรู้สึกเหนื่อยและอยากอาหาร เพราะฉะนั้นตัวละครของคุณจะต้องมีการพักผ่อนและรับประทานอาหารและน้ำดื่มเพื่อประสบการณ์การเล่นโรลเพลย์ที่สมจริง:
+• การพักผ่อน: ต้องมีการนอนพัก เช่น นั่งพักตรงเก้าอี้, นอนในรถ, นอนพักในบ้าน
+• การรับประทานอาหาร: ต้องซื้ออาหารเพื่อรับประทานเพื่อไม่ให้ตัวละครคุณหิวตามร้านอาหาร
+• การดื่มน้ำ: สามารถดื่มน้ำได้จากการซื้อตามร้านอาหารต่างๆ`,
+                                    '• แวะร้านอาหารเพื่อซื้ออาหารและน้ำดื่มรับประทาน และหาที่นั่งพักบนเก้าอี้ นอนในรถ หรือนอนพักในบ้าน',
+                                    '• วิ่งทำงานหรือใช้ชีวิตตลอดเวลาโดยไม่เคยพักผ่อน กินอาหาร หรือดื่มน้ำเลย',
+                                    'ถึงแม้ร้านอาหารหลายร้านจะไม่มีไอเทมอาหารให้ถือ แต่ก็สามารถสมบทบาทว่าคุณได้รับประทานอาหารแล้วได้',
+                                    '',
+                                    ['การใช้ชีวิต']
+                                ),
+                                makeRpRule(
+                                    23,
+                                    'ต้องมีบ้านในการอยู่อาศัยและทะเบียนบ้าน',
+                                    'ซื้อบ้านกับนายหน้า (ไม่มีทะเบียนบ้านอาจถูกตำรวจจับกุม)',
+                                    'แน่นอนว่าคุณไม่อยากเป็นคนไร้บ้าน นั่นหมายความว่าคุณต้องมีบ้านอยู่ โดยบ้านนั้นคุณจะต้องซื้อกับนายหน้าขายบ้านให้ถูกต้อง',
+                                    '• ติดต่อซื้อบ้านกับนายหน้าขายบ้านและดำเนินการทะเบียนบ้านให้เรียบร้อย',
+                                    '• ซื้อบ้านในเกมด้วยเงินในเกมเพียงอย่างเดียวโดยไม่มีทะเบียนบ้านที่ถูกต้อง (อาจถูกตำรวจเข้าจับกุมได้)',
+                                    '',
+                                    '',
+                                    ['ที่อยู่อาศัย']
+                                )
+                            ]
+                        },
+
+                        /* หมวด D: วินัยการเล่นและการปฏิบัติตามเจ้าหน้าที่ */
+                        {
+                            id: 'rp-cat-d',
+                            title: 'หมวด D: วินัยการเล่นและการปฏิบัติตามเจ้าหน้าที่',
+                            subtitle: 'ข้อ 8, 11–13, 15–16, 19, 24 (หนีออกเกม, Alt, Staff, Detain, เสียง)',
+                            theme: 'rose',
+                            icon: 'siren',
+                            expanded: false,
+                            categoryPath: 'กฎการโรลเพลย์ • หมวด D',
+                            description: 'ข้อห้ามร้ายแรงเกี่ยวกับการกดออกเกมหนีเหตุการณ์ การใช้บัญชีรองป่วนเมือง การเข้าหน่วยงานโดยไม่ได้สมัคร การให้ความร่วมมือกับ Staff/ตำรวจ และการใช้เสียง',
+                            children: [
+                                makeRpRule(
+                                    8,
+                                    'ห้ามกดออกจากเซิร์ฟเวอร์ขณะทำพฤติกรรมหนีเหตุการณ์',
+                                    'ห้ามออกหนีหลังฆ่าคน โดนไล่ล่า หนีค่ารักษา หรือป่วนเมือง',
+                                    `หากคุณทำการออกจากเซิร์ฟเวอร์ขณะทำพฤติกรรมเหล่านี้จะผิดกฎเซิร์ฟเวอร์ในทันที:
+• สังหารผู้เล่นแล้วออกจากเซิร์ฟเวอร์
+• ออกเซิร์ฟเวอร์ขณะถูกไล่ล่า
+• ออกจากเซิร์ฟเวอร์เพื่อหนีค่ารักษา
+• ขับรถป่วนชาวบ้านและกดออกเซิร์ฟเวอร์ทันที
+• ก่อกวนผู้เล่นขณะที่ตัวเองไม่ได้อยู่ในช่วงโรลเพลย์แล้วออกเซิร์ฟเวอร์`,
+                                    '• หากมีเหตุฉุกเฉินเร่งด่วนจริงๆ ให้แจ้งผู้เล่นอีกฝ่ายหรือแอดมินรับทราบเหตุผลก่อนออกจากเซิร์ฟเวอร์',
+                                    '• สังหารผู้เล่น ขับรถป่วน หรือถูกตำรวจไล่ล่าแล้วกดออกจากเซิร์ฟเวอร์ทันที',
+                                    'หากมีเหตุฉุกเฉินเร่งด่วนจริงๆ โปรดแจ้งให้กับผู้เล่นอีกฝ่ายหรือแอดมินเพื่อที่จะได้รับทราบเหตุผล แต่หากมีการกระทำพฤติกรรมเหล่านี้หลายครั้งและนำเหตุผลเดิมมาใช้หรือคลุมเครือเกินไปจะถูกลงโทษทันที',
+                                    '',
+                                    ['Combat Log']
+                                ),
+                                makeRpRule(
+                                    11,
+                                    'ห้ามเข้าหน่วยงานที่ตัวเองไม่ได้สมัคร',
+                                    'ฝ่าฝืนถูกหัวหน้าหน่วยงานลงโทษ & ผิดกฎเซิร์ฟเวอร์ทันที',
+                                    'ห้ามเข้าหน่วยงานที่ตัวเองไม่ได้ทำการสมัครเป็นอันขาด เพราะหากกระทำพฤติกรรมนี้จะถูกหัวหน้าหน่วยงานลงโทษทันทีและจะเข้าข่ายผิดกฎเซิร์ฟเวอร์ทันที',
+                                    '• สมัครและผ่านขั้นตอนการคัดเลือกเข้าหน่วยงาน หรือได้รับอนุญาตจากหน่วยงานอย่างถูกต้องก่อนเข้าเล่น',
+                                    '• กดเข้าเล่นในหน่วยงานที่ตนเองไม่ได้ทำการสมัครและไม่ได้รับอนุญาต',
+                                    'หากคุณทำการเข้าหน่วยงานอื่นโดยได้รับอนุญาตจะไม่มีผล',
+                                    '',
+                                    ['หน่วยงาน']
+                                ),
+                                makeRpRule(
+                                    12,
+                                    'ห้ามใช้บัญชีรองหรือบัญชีอื่นๆ มาสร้างความวุ่นวาย',
+                                    'ตั้งใจใช้ Alt Account มาป่วน = โทษแรงสุด!',
+                                    'ห้ามใช้บัญชีรองหรือบัญชีอื่นๆ ที่ตัวเองเล่นมาสร้างความวุ่นวาย การกระทำนี้จะเข้าข่ายผิดกฎเซิร์ฟเวอร์ทันทีหากพบว่ามีการกระทำการสร้างความวุ่นวายขึ้นหรือสร้างความรำคาญให้แก่ผู้เล่นคนอื่น และความรุนแรงของโทษนั้นแรงสุด!',
+                                    '• เล่นด้วยบัญชีหลักของตนเองอย่างสุจริตและรักษากฎระเบียบของเซิร์ฟเวอร์',
+                                    '• สมัครหรือสลับบัญชีรองเข้ามาสร้างความวุ่นวายหรือก่อกวนผู้เล่นอื่นในเซิร์ฟเวอร์',
+                                    'สาเหตุที่โทษนั้นมีความแรงมากนั้น เพราะเป็นการกระทำที่ตั้งใจมาสร้างความวุ่นวาย!',
+                                    '',
+                                    ['โทษแรงสุด']
+                                ),
+                                makeRpRule(
+                                    13,
+                                    'ห้ามหนีจากผู้ดูแล (Staff) เมื่อถูกเรียก',
+                                    'รถ STAFF เปิดไซเรนตามหรือสั่งหยุด ต้องหยุดคุยทันที',
+                                    'ห้ามหนีจากผู้ดูแลเมื่อถูกเรียก หากถูกผู้ดูแลเซิร์ฟเวอร์สั่งให้คุณหยุดหรือถูกเรียกนั้น ให้ทำการคุยกับผู้ดูแลและห้ามทำการหลบหนีเป็นอันขาด!',
+                                    '• หยุดรถและพูดคุยให้ความร่วมมือทันทีเมื่อผู้ดูแลเรียกหรือมีรถสัญลักษณ์ STAFF ขับตามพร้อมเปิดไซเรน',
+                                    '• ขับรถเร่งเครื่องหลบหนีเมื่อผู้ดูแลเซิร์ฟเวอร์ (Staff) สั่งให้หยุดหรือเปิดไซเรนเรียก',
+                                    'หากมีรถที่มีสัญลักษณ์ STAFF หรือผู้ดูแลขับรถตามคุณพร้อมเปิดไซเรนให้ทำการหยุด',
+                                    '',
+                                    ['Staff']
+                                ),
+                                makeRpRule(
+                                    15,
+                                    'ต้องกดรับคำขอระบบ (ขึ้นเตียง / Detain)',
+                                    'ไม่กดรับ Detain = ตำรวจกด Arrest จับเข้าคุกได้ทันที',
+                                    `• ต้องกดรับขึ้นเตียงยกผู้บาดเจ็บของกู้ภัยทุกครั้ง (เฉพาะช่วงที่คุณได้รับบาดเจ็บ)
+• ต้องกดรับ Detain ขณะถูกจับทุกครั้ง แต่หากคุณไม่ยอมกดรับ ตำรวจจะสามารถกดปุ่ม Arrest คุณได้ทันทีโดยไม่ผิดกฎ`,
+                                    '• กดตอบรับคำขอขึ้นเตียงกู้ภัยเมื่อได้รับบาดเจ็บ และกดรับคำขอ Detain ทุกครั้งเมื่อถูกตำรวจจับกุม',
+                                    '• ไม่ยอมกดรับคำขอ Detain เพื่อถ่วงเวลาหรือหลบเลี่ยงการถูกตำรวจจับกุม',
+                                    '',
+                                    '',
+                                    ['Detain', 'กู้ภัย']
+                                ),
+                                makeRpRule(
+                                    16,
+                                    'ห้ามเดินหนีจากตำรวจขณะคุณถูก Detain',
+                                    'ห้ามเดินออกนอกระยะเพื่อให้กุญแจมือหายไป',
+                                    'ห้ามเดินหนีจากตำรวจขณะคุณถูก Detain หากคุณถูก Detain แล้วทำการเดินหนีออกจากบริเวณดังกล่าวเพื่อที่จะให้กุญแจมือของคุณนั้นหายไปและเป็นอิสระ จะนับว่าผิดทันทีเพราะเป็นการหลบหนีเพื่อหวังใช้ระบบของเกมที่ไม่เป็นธรรม',
+                                    '• ยืนอยู่กับที่หรือเดินตามการควบคุมตัวของเจ้าหน้าที่ตำรวจขณะติดสถานะ Detain',
+                                    '• เดินหนีออกจากบริเวณควบคุมตัวขณะถูก Detain เพื่อให้ระบบของเกมปลดกุญแจมือออกเอง',
+                                    '',
+                                    '',
+                                    ['Detain']
+                                ),
+                                makeRpRule(
+                                    19,
+                                    'ห้ามกดออกเกมหนีขณะกำลังโรลเพลย์สมบทบาท',
+                                    'หากถูกตัดการเชื่อมต่อ (เน็ตหลุด) ให้รีบกลับเข้าจุดเดิมทันที',
+                                    'ห้ามกดออกเกมหนีขณะคุณกำลังโรลเพลย์สมบทบาท หากทำการกดออกจากตัวเกมขณะที่คุณโรลเพลย์จะถือว่าเป็นการหนีออกจากการสมบทบาททันที',
+                                    '• กรณีถูกตัดการเชื่อมต่อ (เน็ตหลุด) ให้รีบกลับเข้ามาในเซิร์ฟเวอร์แล้วมาที่จุดเดิมให้ไวที่สุดเพื่อดำเนินการต่อ หรือแจ้งอีกฝ่ายให้รับทราบหากเข้าเซิร์ฟเวอร์ไม่ได้',
+                                    '• กดออกจากตัวเกมหนีกลางคันขณะที่กำลังดำเนินบทบาทโรลเพลย์อยู่',
+                                    '',
+                                    '',
+                                    ['Disconnect']
+                                ),
+                                makeRpRule(
+                                    24,
+                                    'การใช้โปรแกรมดัดแปลงเสียงและการเปิดเพลง',
+                                    'ห้ามดัดเสียงแสบหู & ห้ามเปิดเพลง (ยกเว้นเปิดบนรถ)',
+                                    'ห้ามใช้โปรแกรมดัดแปลงเสียงที่สร้างความเสียหายต่อหูหรือเกิดความรำคาญสูง และห้ามเปิดเพลง หากคุณดัดแปลงเสียงเพื่อการโรลเพลย์สมบทบาทจะไม่มีปัญหา แต่หากดัดแปลงเสียงเพื่อสร้างความน่ารำคาญหรือเกิดความอันตรายต่อหูนั้นจะไม่สามารถทำได้ รวมถึงการเปิดเพลง ยกเว้นหากคุณเปิดเพลงขณะอยู่บนรถจะสามารถทำได้เปรียบเหมือนว่าคุณเปิดเพลงอยู่บนรถ!',
+                                    '• ดัดแปลงเสียงให้เข้ากับบทบาทตัวละครอย่างเหมาะสม หรือเปิดเพลงเฉพาะขณะนั่งอยู่บนรถยนต์',
+                                    '• เปิดเสียงดังแสบหูรบกวนผู้เล่นอื่น หรือเปิดเพลงเดินไปมาตามท้องถนนสาธารณะ',
+                                    '',
+                                    '',
+                                    ['ไมโครโฟน']
+                                )
+                            ]
+                        }
+                    ]
+                },
+
+                /* =====================================================================
+                 * BRANCH 2: IN-SERVER COMMANDS (ALL 42 COMMANDS · PREFIX :)
+                 * ===================================================================== */
+                {
+                    id: 'commands-root',
+                    title: 'คำสั่งในเซิร์ฟเวอร์ (42 คำสั่ง)',
+                    subtitle: 'Prefix : | Owner • Admin • Moderator',
+                    theme: 'amber',
+                    icon: 'terminal',
+                    expanded: false,
+                    categoryPath: 'สายที่ 2 • คำสั่งทั้งหมดในเซิร์ฟเวอร์',
+                    description: `คำสั่งทั้งหมดในเซิร์ฟเวอร์ Bangkok City Roleplay (42 คำสั่ง)
+• เครื่องหมายนำหน้า (Prefix): ใช้เครื่องหมาย ( : ) นำหน้าทุกคำสั่ง
+
+ลำดับชั้นของสิทธิ์ (จากสูงสุดไปต่ำสุด):
+1. Owner (เจ้าของเซิร์ฟเวอร์)
+2. Admin
+3. Helper (สิทธิ์จะน้อยกว่า Moderator แต่อาจจะเท่ากับ Admin)
+4. Moderator`,
+                    note: 'อาจจะมีคำสั่งตกหล่นบางคำสั่ง ขออภัย :]',
+                    children: [
+                        {
+                            id: 'cmd-owner',
+                            title: 'ระดับ Owner (2 คำสั่ง)',
+                            subtitle: 'เจ้าของเซิร์ฟเวอร์ • แต่งตั้ง/ปลด Admin',
+                            theme: 'sky',
+                            icon: 'crown',
+                            expanded: false,
+                            categoryPath: 'คำสั่งในเซิร์ฟเวอร์ • Owner',
+                            description: 'คำสั่งเฉพาะสำหรับ Owner (เจ้าของเซิร์ฟเวอร์) จำนวน 2 คำสั่ง ใช้สำหรับมอบและยกเลิกสิทธิ์ Admin',
+                            children: [
+                                makeCmd('c-admin', ':admin [Player/UserId]', 'มอบสิทธิ์ Admin', 'Owner', 'มอบสิทธิ์ระดับ Admin ให้กับผู้เล่นที่ระบุชื่อหรือ UserId'),
+                                makeCmd('c-unadmin', ':unadmin [Player/UserId]', 'ยกเลิกสิทธิ์ Admin', 'Owner', 'ยกเลิกสิทธิ์ระดับ Admin ออกจากผู้เล่นที่ระบุชื่อหรือ UserId')
+                            ]
+                        },
+                        {
+                            id: 'cmd-admin',
+                            title: 'ระดับ Admin (10 คำสั่ง)',
+                            subtitle: 'จัดการแผนที่ ยศทีมงาน เซิร์ฟเวอร์ & การแบน',
+                            theme: 'indigo',
+                            icon: 'shield',
+                            expanded: false,
+                            categoryPath: 'คำสั่งในเซิร์ฟเวอร์ • Admin',
+                            description: 'คำสั่งสำหรับผู้ดูแลระดับ Admin จำนวน 10 คำสั่ง ครอบคลุมการโหลดแผนที่ แต่งตั้ง Helper/Moderator ปิดเซิร์ฟเวอร์ เปลี่ยนสภาพอากาศ และแบน/ปลดแบนถาวร',
+                            children: [
+                                makeCmd('c-loadlayout', ':loadlayout [String]', 'โหลดรูปแบบการจัดวาง/แผนที่', 'Admin', 'โหลดรูปแบบการจัดวางสิ่งปลูกสร้างหรือแผนที่ (Layout) ตามชื่อที่ระบุเข้าสู่เซิร์ฟเวอร์'),
+                                makeCmd('c-unloadlayout', ':unloadlayout [String]', 'นำรูปแบบการจัดวางออก', 'Admin', 'นำรูปแบบการจัดวางสิ่งปลูกสร้างหรือแผนที่ (Layout) ที่ระบุออกจากเซิร์ฟเวอร์'),
+                                makeCmd('c-helper', ':helper [Player/UserId]', 'มอบสิทธิ์ Helper', 'Admin', 'มอบสิทธิ์ระดับ Helper ให้กับผู้เล่นที่ระบุ (หมายเหตุ: Helper สิทธิ์จะน้อยกว่า Moderator แต่อาจจะเท่ากับ Admin)'),
+                                makeCmd('c-unhelper', ':unhelper [Player/UserId]', 'ยกเลิกสิทธิ์ Helper', 'Admin', 'ยกเลิกสิทธิ์ระดับ Helper ของผู้เล่นที่ระบุ'),
+                                makeCmd('c-mod', ':mod [Player/UserId]', 'มอบสิทธิ์ Moderator', 'Admin', 'มอบสิทธิ์ระดับ Moderator ให้กับผู้เล่นที่ระบุ'),
+                                makeCmd('c-unmod', ':unmod [Player/UserId]', 'ยกเลิกสิทธิ์ Moderator', 'Admin', 'ยกเลิกสิทธิ์ระดับ Moderator ของผู้เล่นที่ระบุ'),
+                                makeCmd('c-shutdown', ':shutdown', 'ปิดเซิร์ฟเวอร์', 'Admin', 'สั่งปิดเซิร์ฟเวอร์เกมปัจจุบันทันที'),
+                                makeCmd('c-weather', ':weather [String]', 'เปลี่ยนสภาพอากาศในเกม', 'Admin', 'เปลี่ยนสภาพอากาศภายในเกมตามรูปแบบที่ระบุ'),
+                                makeCmd('c-ban', ':ban [Player/UserId]', 'แบนผู้เล่นอย่างถาวร', 'Admin', 'แบนผู้เล่นออกจากเซิร์ฟเวอร์อย่างถาวร (ต้องมีหลักฐานชัดเจนตามมาตรา 23 และได้รับอนุมัติตามมาตรา 27)'),
+                                makeCmd('c-unban', ':unban [String]', 'ยกเลิกการแบนผู้เล่น', 'Admin', 'ปลดแบนและยกเลิกสถานะการแบนของผู้เล่นที่ระบุ')
+                            ]
+                        },
+                        {
+                            id: 'cmd-moderator',
+                            title: 'ระดับ Moderator (30 คำสั่ง)',
+                            subtitle: 'ตรวจสอบ Log ลงโทษ วาร์ป ประกาศ & เหตุการณ์',
+                            theme: 'amber',
+                            icon: 'hammer',
+                            expanded: false,
+                            categoryPath: 'คำสั่งในเซิร์ฟเวอร์ • Moderator',
+                            description: 'คำสั่งปฏิบัติการสำหรับ Moderator จำนวน 30 คำสั่ง สำหรับตรวจสอบ Log ลงโทษเบื้องต้น วาร์ป สื่อสาร และควบคุมเวลา/ไฟไหม้ในเซิร์ฟเวอร์',
+                            children: [
+                                makeCmd('c-killlogs', ':killlogs', 'ดูบันทึกการสังหารในเกม', 'Moderator', 'เปิดดูประวัติและบันทึกการสังหารทั้งหมดที่เกิดขึ้นในเซิร์ฟเวอร์'),
+                                makeCmd('c-bans', ':bans', 'แสดงรายชื่อผู้เล่นที่ถูกแบนทั้งหมด', 'Moderator', 'แสดงรายชื่อผู้เล่นทั้งหมดที่ถูกแบนอยู่ในระบบ'),
+                                makeCmd('c-mods', ':mods', 'แสดงรายชื่อ Moderator ทั้งหมด', 'Moderator', 'แสดงรายชื่อผู้เล่นที่มีสิทธิ์ระดับ Moderator ทั้งหมด'),
+                                makeCmd('c-admins', ':admins', 'แสดงรายชื่อ Admin ทั้งหมด', 'Moderator', 'แสดงรายชื่อผู้เล่นที่มีสิทธิ์ระดับ Admin ทั้งหมด'),
+                                makeCmd('c-commands', ':commands', 'แสดงรายการคำสั่งทั้งหมดนี้', 'Moderator', 'แสดงรายการคำสั่งทั้งหมดที่สามารถใช้งานได้ในเซิร์ฟเวอร์'),
+                                makeCmd('c-kick', ':kick [Player] [String]', 'เตะผู้เล่นออกจากเซิร์ฟเวอร์พร้อมเหตุผล', 'Moderator', 'เตะผู้เล่นที่ระบุออกจากเซิร์ฟเวอร์พร้อมแสดงข้อความเหตุผล'),
+                                makeCmd('c-jail', ':jail [Player]', 'ขังผู้เล่นที่กำหนดไว้ในคุก', 'Moderator', 'ส่งตัวผู้เล่นที่กำหนดเข้าสู่ห้องขังในคุก'),
+                                makeCmd('c-kill', ':kill [Player]', 'สังหารผู้เล่น', 'Moderator', 'ทำให้ตัวละครของผู้เล่นที่กำหนดเสียชีวิต'),
+                                makeCmd('c-tp', ':tp [Player]', 'วาร์ปไปหาผู้เล่น', 'Moderator', 'วาร์ปตัวคุณไปยังตำแหน่งของผู้เล่นที่ระบุ'),
+                                makeCmd('c-tpto', ':tp [Player1] to [Player2]', 'วาร์ปผู้เล่นคนแรกไปหาคนที่สอง', 'Moderator', 'เคลื่อนย้ายผู้เล่นคนแรกไปยังตำแหน่งของผู้เล่นคนที่สอง'),
+                                makeCmd('c-bring', ':bring [Player]', 'ดึงผู้เล่นที่กำหนดให้วาร์ปมาหาคุณ', 'Moderator', 'ดึงตัวผู้เล่นที่กำหนดให้วาร์ปมาหาคุณทันที'),
+                                makeCmd('c-refresh', ':refresh [Player]', 'ทำให้ตัวละครเกิดใหม่', 'Moderator', 'รีเฟรชตัวละครของผู้เล่นที่ระบุให้เกิดใหม่'),
+                                makeCmd('c-respawn', ':respawn [Player]', 'ทำให้ผู้เล่นเกิดใหม่ทันที', 'Moderator', 'บังคับให้ผู้เล่นที่กำหนดเกิดใหม่ (Respawn) ทันที'),
+                                makeCmd('c-heal', ':heal [Player]', 'รักษา HP ของผู้เล่นให้เต็ม', 'Moderator', 'ฟื้นฟูค่าพลังชีวิต (HP) ของผู้เล่นให้เต็ม 100%'),
+                                makeCmd('c-view', ':view [Player]', 'มองมุมกล้องของผู้เล่นที่กำหนด', 'Moderator', 'สลับมุมมองกล้องของคุณไปสังเกตการณ์ผู้เล่นที่กำหนด'),
+                                makeCmd('c-wanted', ':wanted [Player] [String]', 'ทำเครื่องหมาย WANTED พร้อมเหตุผล', 'Moderator', 'ติดป้ายประกาศจับ "WANTED" บนตัวผู้เล่นพร้อมระบุเหตุผล'),
+                                makeCmd('c-unwanted', ':unwanted [Player]', 'ลบเครื่องหมาย WANTED ออก', 'Moderator', 'ลบเครื่องหมายประกาศจับ "WANTED" ออกจากผู้เล่น'),
+                                makeCmd('c-log', ':log [String]', 'บันทึกข้อความใน Log ของเซิร์ฟเวอร์', 'Moderator', 'บันทึกข้อความลงใน Log ของเซิร์ฟเวอร์'),
+                                makeCmd('c-m', ':m [String]', 'Broadcast ข้อความขนาดใหญ่ให้ทุกคนเห็น', 'Moderator', 'ประกาศข้อความขนาดใหญ่กลางหน้าจอให้ผู้เล่นทั้งเซิร์ฟเวอร์เห็น'),
+                                makeCmd('c-pm', ':pm [Player] [String]', 'ส่งข้อความส่วนตัวถึงผู้เล่น', 'Moderator', 'ส่งข้อความส่วนตัว (PM) ถึงผู้เล่นที่ระบุโดยตรง'),
+                                makeCmd('c-time', ':time [Number]', 'เปลี่ยนเวลาของวันในเกม', 'Moderator', 'เปลี่ยนเวลาของวันในเซิร์ฟเวอร์ตามตัวเลขที่กำหนด'),
+                                makeCmd('c-pt', ':pt [Number]', 'เปลี่ยนเวลาส่วนตัวให้ผู้เล่นที่กำหนด', 'Moderator', 'เปลี่ยนเวลาส่วนตัว (Personal Time) เฉพาะผู้เล่นที่กำหนด'),
+                                makeCmd('c-prty', ':prty [Number]', 'เปลี่ยนระดับ Priority ในการจัดการ Log', 'Moderator', 'เปลี่ยนระดับความสำคัญ (Priority) ของผู้เล่นในการจัดการ Log'),
+                                makeCmd('c-startfire', ':startfire [String]', 'เริ่มต้นไฟไหม้ในพื้นที่ที่กำหนด', 'Moderator', 'สร้างเหตุการณ์เพลิงไหม้ในพื้นที่ที่ระบุ'),
+                                makeCmd('c-startnearfire', ':startnearfire [String]', 'เริ่มไฟไหม้ใกล้เคียงตำแหน่งที่กำหนด', 'Moderator', 'สร้างเหตุการณ์เพลิงไหม้ในบริเวณใกล้เคียงกับตำแหน่งที่กำหนด'),
+                                makeCmd('c-stopfire', ':stopfire', 'หยุดไฟไหม้ทั้งหมด', 'Moderator', 'ดับและหยุดเหตุการณ์ไฟไหม้ทั้งหมดในเซิร์ฟเวอร์'),
+                                makeCmd('c-tocar', ':to car', 'วาร์ปคุณไปยังรถของคุณโดยอัตโนมัติ', 'Moderator', 'วาร์ปตัวคุณไปยังรถยนต์ส่วนตัวของคุณโดยอัตโนมัติ'),
+                                makeCmd('c-h', ':h [String]', 'แสดงข้อความเตือนเล็กๆ ที่ด้านบนจอ', 'Moderator', 'แสดงข้อความแจ้งเตือนขนาดเล็กที่ด้านบนหน้าจอ'),
+                                makeCmd('c-logs', ':logs', 'ดูบันทึกการใช้คำสั่งทั้งหมด', 'Moderator', 'เปิดดูบันทึกการใช้คำสั่งของทีมงานทั้งหมดในเซิร์ฟเวอร์'),
+                                makeCmd('c-toatv', ':to ATV', 'วาร์ปคุณไปยังรถ ATV ของคุณ', 'Moderator', 'วาร์ปตัวคุณไปยังรถ ATV ของคุณโดยอัตโนมัติ')
+                            ]
+                        }
+                    ]
+                },
+
+                /* =====================================================================
+                 * BRANCH 3: DISCORD RULES REVISED EDITION (6 CATEGORIES · 60 ARTICLES)
+                 * ===================================================================== */
+                {
+                    id: 'rules-root',
+                    title: 'กฎ Discord ฉบับแก้ไข (6 หมวด 60 มาตรา)',
+                    subtitle: 'หมวดที่ 1–6 • มาตรา 1 ถึง มาตรา 60',
+                    theme: 'indigo',
+                    icon: 'scale',
+                    expanded: false,
+                    categoryPath: 'สายที่ 3 • กฎเซิร์ฟเวอร์ Discord (ฉบับแก้ไข)',
+                    description: `กฎของ Discord Bangkok City Roleplay [ฉบับแก้ไข] มีทั้งหมด 6 หมวด 60 มาตรา:
+• หมวดที่ 1: การเคารพและจรรยาบรรณทั่วไป [มาตรา 1–10]
+• หมวดที่ 2: กฎการใช้ช่องทางอย่างถูกต้อง [มาตรา 11–20]
+• หมวดที่ 3: กฎการใช้อำนาจและการควบคุม [มาตรา 21–32]
+• หมวดที่ 4: กฎการเล่นบทบาทและการป้องกันการโกง [มาตรา 33–38]
+• หมวดที่ 5: การบังคับใช้กฎและการอุทธรณ์ [มาตรา 39–50]
+• หมวดที่ 6: การป้องกันการหาช่องโหว่และข้อบังคับทีมงาน [มาตรา 51–60]`,
+                    children: [
+                        /* หมวดที่ 1: มาตรา 1-10 */
+                        {
+                            id: 'discord-cat-1',
+                            title: 'หมวดที่ 1: การเคารพและจรรยาบรรณทั่วไป',
+                            subtitle: 'มาตรา 1–10 (General Respect and Ethics)',
+                            theme: 'indigo',
+                            icon: 'shield',
+                            expanded: false,
+                            categoryPath: 'กฎ Discord • หมวดที่ 1',
+                            description: 'หมวดที่ 1: การเคารพและจรรยาบรรณทั่วไป (General Respect and Ethics) ครอบคลุมมาตรา 1 ถึง มาตรา 10',
+                            children: [
+                                makeArticle(1, 1, 'การเคารพและให้เกียรติ', 'ปฏิบัติต่อกันด้วยความสุภาพ ไม่แบ่งแยก', 'สมาชิกและแอดมินหรือบุคคลระดับสูงทุกคน ต้องปฏิบัติต่อกันด้วยความสุภาพ และให้เกียรติในความแตกต่างของเชื้อชาติ เพศ วัย และสถานะในเซิร์ฟเวอร์'),
+                                makeArticle(2, 1, 'ห้ามการเหยียดหยามขั้นรุนแรง', 'ละเมิด = แบนถาวรทันที', 'ห้ามใช้คำพูด ภาพ หรือสัญลักษณ์ที่แสดงถึง การเหยียดเชื้อชาติ ศาสนา เพศ พระมหากษัตริย์ ฯลฯ โดยเด็ดขาด การละเมิดข้อนี้มีผลให้ถูก แบนถาวรทันที', ['แบนถาวรทันที'], true),
+                                makeArticle(3, 1, 'ห้ามการคุกคามส่วนตัว', 'ห้ามข่มขู่/ก่อกวนทาง DM', 'ห้ามส่งข้อความส่วนตัว [DM] เพื่อข่มขู่ คุกคาม หรือก่อกวน สมาชิกคนอื่นอย่างต่อเนื่อง'),
+                                makeArticle(4, 1, 'ห้ามเปิดเผยข้อมูลส่วนตัว', 'ห้ามเผยแพร่ชื่อจริง ที่อยู่ รูปถ่าย', 'ห้ามโพสต์หรือข่มขู่ว่าจะเผยแพร่ข้อมูลส่วนตัวของผู้อื่น เช่น ชื่อจริง ที่อยู่ รูปถ่าย โดยไม่ได้รับอนุญาต', ['ข้อมูลส่วนบุคคล'], true),
+                                makeArticle(5, 1, 'ความรับผิดชอบต่อคำพูด', 'รับผิดชอบทุกข้อความและการกระทำ', 'สมาชิกทุกคน ต้องรับผิดชอบต่อทุกข้อความและทุกการกระทำของตนเอง ในเซิร์ฟเวอร์'),
+                                makeArticle(6, 1, 'เนื้อหาที่ไม่เหมาะสม [NSFW]', 'ห้ามสื่อลามกอนาจารและภาพรุนแรง', 'ห้ามโพสต์สื่อลามกอนาจาร [NSFW] ภาพความรุนแรง หรือภาพที่ก่อให้เกิดความไม่สบายใจในทุกคนและทุกห้องของเซิร์ฟเวอร์ Discord', ['NSFW'], true),
+                                makeArticle(7, 1, 'การแอบอ้างตัวตน', 'ห้ามใช้รูป/ชื่อแอบอ้างสมาชิกหรือแอดมิน', 'ห้ามใช้รูปโปรไฟล์หรือชื่อเพื่อแอบอ้างเป็นสมาชิกอื่น หรือแอดมิน หรือบุคคลที่มีตำแหน่งสูงเด็ดขาด'),
+                                makeArticle(8, 1, 'ความเหมาะสมของชื่อ/สถานะ', 'ต้องไม่หยาบคายหรือแอบอ้างระดับสูง', 'การตั้งชื่อ และสถานะ ต้องไม่หยาบคาย หรือแอบอ้างแอดมินหรือบุคคลระดับสูง'),
+                                makeArticle(9, 1, 'ห้ามการสร้างดราม่า', 'ห้ามนำความขัดแย้งส่วนตัวมาก่อกวนในแชทรวม', 'ห้ามนำความขัดแย้งส่วนตัวมาสร้างความวุ่นวายในห้องแชทสาธารณะแม้ทางตรงหรือทางอ้อม ควรแก้ไขใน DM หรือผ่านช่องทางการรายงานเท่านั้น'),
+                                makeArticle(10, 1, 'ความรับผิดชอบต่อการกระทำผิดกฎหมาย', 'ห้ามฟิชชิ่ง ไวรัส หรือผิดกฎหมายไทย/สากล', 'ห้ามเผยแพร่เนื้อหาหรือกระทำการใดๆ ที่เข้าข่าย ผิดกฎหมายของประเทศไทย หรือกฎหมายสากล เช่น การฟิชชิ่ง การเผยแพร่ไวรัส', ['ผิดกฎหมาย'], true)
+                            ]
+                        },
+                        /* หมวดที่ 2: มาตรา 11-20 */
+                        {
+                            id: 'discord-cat-2',
+                            title: 'หมวดที่ 2: กฎการใช้ช่องทางอย่างถูกต้อง',
+                            subtitle: 'มาตรา 11–20 (Channel Usage Protocol)',
+                            theme: 'sky',
+                            icon: 'file',
+                            expanded: false,
+                            categoryPath: 'กฎ Discord • หมวดที่ 2',
+                            description: 'หมวดที่ 2: กฎการใช้ช่องทางอย่างถูกต้อง (Channel Usage Protocol) ครอบคลุมมาตรา 11 ถึง มาตรา 20',
+                            children: [
+                                makeArticle(11, 2, 'ความถูกต้องของช่อง', 'สื่อสารให้สอดคล้องกับหัวข้อแต่ละช่อง', 'การสื่อสารในทุกช่องทาง ต้องสอดคล้องกับหัวข้อแต่ละช่องที่กำหนดไว้เท่านั้น ห้ามโพสต์หรือแชทนอกประเด็น'),
+                                makeArticle(12, 2, 'ห้ามสแปมและการรบกวน', 'ห้ามส่งข้อความซ้ำ CAPS เกิน 3 บรรทัด', 'ห้ามส่งข้อความซ้ำๆ พิมพ์ตัวอักษรใหญ่ [CAPS LOCK] เกิน 3 บรรทัด หรือใช้สัญลักษณ์/อิโมจิรัวๆ'),
+                                makeArticle(13, 2, 'ห้ามแท็กที่ไม่จำเป็น', 'ห้ามแท็ก everyone / here โดยไม่มีเหตุ', 'ห้ามแท็ก สมาชิกทั่วไป ทีมงาน หรือบทบาท everyone หรือ here โดยไม่มีเหตุผล และไม่จำเป็นและเร่งด่วน'),
+                                makeArticle(14, 2, 'การใช้คำสั่งบอท', 'ใช้คำสั่งบอทเฉพาะในห้องที่กำหนดเท่านั้น', 'คำสั่งบอททั้งหมด ต้องใช้ในห้องที่กำหนดเท่านั้น (เช่นห้องคำสั่งบอทของเซิร์ฟเวอร์) เพื่อรักษาความเป็นระเบียบ'),
+                                makeArticle(15, 2, 'ห้ามลบหลักฐาน', 'ห้ามลบข้อความ/ภาพระหว่างการตรวจสอบ', 'ห้ามลบข้อความ รูปภาพ หรือหลักฐาน ที่ส่งในช่องแชท หากข้อความนั้นอยู่ระหว่างการตรวจสอบการกระทำผิด', ['ห้ามลบหลักฐาน'], true),
+                                makeArticle(16, 2, 'ห้องเจ้าหน้าที่และช่องทางเฉพาะ', 'ห้ามผู้ไม่มีสิทธิ์โพสต์ในช่องหน่วยงาน', 'ห้ามสมาชิกที่ไม่มีสิทธิ์โพสต์ข้อความในช่องสื่อสารของหน่วยงานต่างๆ'),
+                                makeArticle(17, 2, 'การโพสต์ประกาศ', 'เฉพาะทีมงานที่ได้รับมอบหมายเท่านั้น', 'ห้ามสมาชิกทั่วไปโพสต์ข้อความในช่องประกาศ เว้นแต่จะเป็นทีมงานที่ได้รับมอบหมายเท่านั้น'),
+                                makeArticle(18, 2, 'การใช้ห้องเสียง', 'เปิดตัดเสียงรบกวน & ห้ามเปิดเพลงรบกวน', 'สมาชิกในห้องเสียงต้องเปิดใช้งานการตัดเสียงรบกวน และห้ามเปิดเพลงหรือเสียงดังรบกวน โดยไม่ได้รับอนุญาต'),
+                                makeArticle(19, 2, 'ห้ามใช้โปรแกรมรบกวนเสียง', 'ห้าม Voice Changer / Soundboard ก่อกวน', 'ห้ามใช้ Voice Changer หรือ Soundboard เพื่อก่อกวนในห้องเสียงโดยเจตนา'),
+                                makeArticle(20, 2, 'ห้ามการบันทึกเสียง', 'ยกเว้นบันทึกเพื่อเป็นหลักฐานเอาผิดผู้กระทำผิด', 'ห้ามบันทึกการสนทนาในห้องเสียง โดยไม่ได้รับอนุญาตจากสมาชิกทุกคนในห้อง ยกเว้นกรณีบันทึกไว้เพื่อเป็นหลักฐานเอาผิดผู้กระทำผิดในช่องสนทนา', ['ข้อยกเว้นหลักฐาน'])
+                            ]
+                        },
+                        /* หมวดที่ 3: มาตรา 21-32 */
+                        {
+                            id: 'discord-cat-3',
+                            title: 'หมวดที่ 3: กฎการใช้อำนาจและการควบคุม',
+                            subtitle: 'มาตรา 21–32 (Authority and Power Control)',
+                            theme: 'indigo',
+                            icon: 'shield',
+                            expanded: false,
+                            categoryPath: 'กฎ Discord • หมวดที่ 3',
+                            description: 'หมวดที่ 3: กฎการใช้อำนาจและการควบคุม (Authority and Power Control) ครอบคลุมมาตรา 21 ถึง มาตรา 32',
+                            children: [
+                                makeArticle(21, 3, 'ห้ามใช้อำนาจในทางที่ผิด (Power Abuse) โดยเด็ดขาด', 'ห้ามใช้ยศเพื่อประโยชน์ส่วนตัวหรือแกล้งสมาชิก', 'ห้ามแอดมินหรือบุคคลระดับสูงใช้ยศ อำนาจ หรือเครื่องมือแอดมินเพื่อผลประโยชน์ส่วนตัว หรือเพื่อทำโทษสมาชิกที่ไม่ชอบหน้าเด็ดขาด', ['Power Abuse'], true),
+                                makeArticle(22, 3, 'การปฏิบัติหน้าที่ตามขอบเขต', 'ทำงานภายใต้ขอบเขตอำนาจที่ได้รับเท่านั้น', 'ทุกคนทั้งแอดมินหรือบุคคลระดับสูง ต้องปฏิบัติงานภายใต้ขอบเขตอำนาจที่ตนเองได้รับเท่านั้น ห้ามทำหน้าที่ที่มากกว่างานที่ตัวเองได้รับมอบหมาย'),
+                                makeArticle(23, 3, 'การตัดสินใจต้องมีหลักฐาน', 'โทษรุนแรงเช่นแบน ต้องบันทึกหลักฐานชัดเจน', 'การตัดสินโทษที่รุนแรง เช่น แบน ต้องมีการบันทึกหลักฐานที่ชัดเจน', ['มาตรฐานหลักฐาน']),
+                                makeArticle(24, 3, 'ห้ามเรียกรับผลประโยชน์', 'ห้ามรับเงินจริง/Robux แลกยศหรือลดโทษ', 'ห้ามแอดมินหรือบุคคลระดับสูงเรียกรับเงินจริง Robux หรือผลประโยชน์อื่นๆ เพื่อแลกกับการเลื่อนยศ ลดโทษ หรือให้สิทธิพิเศษต่างๆ เด็ดขาด', ['ห้ามทุจริต'], true),
+                                makeArticle(25, 3, 'การรักษาความเป็นกลาง', 'ตัดสินอย่างเคร่งครัด ไร้ความอคติส่วนตัว', 'ต้องรักษาความเป็นกลางในการตัดสินโทษอย่างเคร่งครัด และห้ามลงโทษจากอคติส่วนตัว'),
+                                makeArticle(26, 3, 'ห้ามแอบอ้างยศภายใน', 'ห้ามเปลี่ยนชื่อ/รับบทบาทอ้างเป็นหัวหน้าหน่วยงาน', 'ห้ามสมาชิกที่ไม่มีสิทธิ์ เปลี่ยนชื่อ หรือรับบทบาทเพื่อแอบอ้างเป็นหัวหน้าหน่วยงาน หรือแอดมิน'),
+                                makeArticle(27, 3, 'การอนุมัติการลงโทษสำคัญ', 'แบนถาวรต้องได้รับการอนุมัติจากระดับสูงก่อนเสมอ', 'การตัดสินโทษ แบนถาวร ต้องได้รับการอนุมัติจากแอดมินระดับสูงหรือบุคคลระดับสูงก่อนเสมอ'),
+                                makeArticle(28, 3, 'การตรวจสอบการลงโทษ', 'ระดับสูงตรวจ Log ทีมงานระดับล่างได้ตลอดเวลา', 'แอดมินระดับสูง มีสิทธิ์ตรวจสอบกิจกรรมและบันทึกการลงโทษ ของทีมงานระดับล่างได้ตลอดเวลาเพื่อป้องกัน Power Abuse'),
+                                makeArticle(29, 3, 'ห้ามการใช้บัญชีสำรองของแอดมินหรือบุคคลระดับสูง', 'ทีมงานห้ามใช้ Alt Account ดูแลหรือเลี่ยงกฎ', 'ทีมงานห้ามใช้บัญชีสำรอง [Alt Account] เพื่อทำหน้าที่ดูแลหรือหลีกเลี่ยงกฎของเซิร์ฟเวอร์'),
+                                makeArticle(30, 3, 'การลงโทษต้องโปร่งใส', 'ต้องแสดงเหตุผลและหลักฐานแก่ผู้ถูกลงโทษได้', 'หากมีการลงโทษเกิดขึ้น แอดมินหรือบุคคลระดับสูงต้องสามารถให้เหตุผลและหลักฐานของการลงโทษแก่ผู้ถูกลงโทษได้'),
+                                makeArticle(31, 3, 'การกำกับดูแลยศ/บทบาท', 'ให้หรือถอด Role ต้องทำตามขั้นตอนที่กำหนด', 'การให้หรือถอดยศ/บทบาท [Role] ต้องเป็นไปตามขั้นตอนที่กำหนดไว้เท่านั้น ห้ามให้ยศพิเศษแก่บุคคลที่ไม่ผ่านการตรวจสอบ'),
+                                makeArticle(32, 3, 'การลงโทษที่ไม่ถูกต้อง', 'ลงโทษไร้หลักฐาน/ใช้อำนาจผิด จะถูกตักเตือนหรือลดขั้น', 'หากแอดมินหรือบุคคลระดับสูงลงโทษผู้เล่นโดย ไม่มีหลักฐาน หรือมีการใช้อำนาจในทางที่ผิดอย่างชัดเจน แอดมินหรือบุคคลระดับสูงผู้นั้นจะถูกตักเตือนหรือลดขั้นตามความเหมาะสม')
+                            ]
+                        },
+                        /* หมวดที่ 4: มาตรา 33-38 */
+                        {
+                            id: 'discord-cat-4',
+                            title: 'หมวดที่ 4: กฎการเล่นบทบาทและการป้องกันการโกง',
+                            subtitle: 'มาตรา 33–38 (RP Integrity and Anti-Cheating)',
+                            theme: 'sky',
+                            icon: 'scale',
+                            expanded: false,
+                            categoryPath: 'กฎ Discord • หมวดที่ 4',
+                            description: 'หมวดที่ 4: กฎการเล่นบทบาทและการป้องกันการโกง (RP Integrity and Anti-Cheating) ครอบคลุมมาตรา 33 ถึง มาตรา 38',
+                            children: [
+                                makeArticle(33, 4, 'ห้าม Meta-Gaming โดยเด็ดขาด', 'ห้ามนำข้อมูล Discord [OC] มาใช้โกง RP [IC]', 'ห้ามนำข้อมูลที่ได้จาก Discord [OC] มาใช้ประโยชน์ในการโกงหรือทำลาย RP [IC] ในเกม Roblox', ['Meta-Gaming']),
+                                makeArticle(34, 4, 'ห้ามการโกง (Cheating/Exploiting)', 'ห้ามพูดถึง แชร์ลิงก์ หรือแนะนำโปรแกรมโกง/บั๊ก', 'ห้ามพูดถึง แชร์ลิงก์ หรือแนะนำโปรแกรมช่วยเล่น บั๊ก หรือวิธีการโกง [Exploiting] ใดๆ ในเกม Roblox', ['Anti-Cheat'], true),
+                                makeArticle(35, 4, 'การแยกอารมณ์ (OC/IC)', 'ไม่นำความขัดแย้งในเกมมาก่อกวนใน Discord', 'ความขัดแย้งที่เกิดขึ้นในบทบาท [IC] ต้องไม่ถูกนำมาใช้เพื่อก่อกวนผู้เล่นคนอื่นใน Discord [OC]'),
+                                makeArticle(36, 4, 'การแบนข้ามแพลตฟอร์ม', 'แบนถาวรใน Roblox = แบนจาก Discord ด้วย', 'หากผู้เล่นถูกแบนถาวร จากเซิร์ฟเวอร์เกม Roblox จากการโกงหรือความผิดร้ายแรง จะถูกแบนจาก Discord ด้วย', ['Cross-Ban'], true),
+                                makeArticle(37, 4, 'ความถูกต้องของการ (Verify/Role)', 'ต้องผ่านการ Verify และห้ามแอบอ้างยศ', 'สมาชิกต้องผ่านการยืนยันตัวตน [Verify] และห้ามแอบอ้างยศที่ไม่ได้รับอนุญาต'),
+                                makeArticle(38, 4, 'ห้ามการชักชวนให้หลุด (RP)', 'ห้ามใช้ Discord ชักชวนทำ Fail RP', 'ห้ามใช้ Discord เพื่อชักชวนผู้เล่นคนอื่นให้หลุดบท [Fail RP] หรือทำลายบรรยากาศ RP ในเกม')
+                            ]
+                        },
+                        /* หมวดที่ 5: มาตรา 39-50 */
+                        {
+                            id: 'discord-cat-5',
+                            title: 'หมวดที่ 5: การบังคับใช้กฎและการอุทธรณ์',
+                            subtitle: 'มาตรา 39–50 (Enforcement and Appeals)',
+                            theme: 'indigo',
+                            icon: 'scale',
+                            expanded: false,
+                            categoryPath: 'กฎ Discord • หมวดที่ 5',
+                            description: 'หมวดที่ 5: การบังคับใช้กฎและการอุทธรณ์ (Enforcement and Appeals) ครอบคลุมมาตรา 39 ถึง มาตรา 50',
+                            children: [
+                                makeArticle(39, 5, 'การยื่นอุทธรณ์', 'ใช้ช่องทางรายงานที่กำหนดพร้อมแนบหลักฐานชัดเจน', 'สมาชิกต้องใช้ช่องทางรายงาน/อุทธรณ์ที่กำหนด เพื่อรายงานพร้อมแนบหลักฐานที่ชัดเจนเท่านั้น'),
+                                makeArticle(40, 5, 'ห้ามเป็นผู้ดูแลด้วยตนเอง', 'ห้ามสมาชิกทั่วไปตัดสินโทษเอง & เชื่อมโยงมาตรา 32', 'ห้ามสมาชิกทั่วไปทำหน้าที่เป็นผู้ดูแล หรือประกาศลงโทษผู้เล่นอื่นด้วยตนเองเด็ดขาด และจะตัดสินโทษแอดมินหรือบุคคลระดับสูงคนนั้นด้วย โดยผู้ตัดสินโทษต้องตัดสินโทษให้คล้องจองกับมาตรา 32 ด้วย', ['เชื่อมโยง ม.32']),
+                                makeArticle(41, 5, 'ลำดับการลงโทษ (6 ระดับสี)', 'ระดับความรุนแรง 6 สี (เขียว ขาว เหลือง ส้ม แดง ดำ)', `โทษจะถูกพิจารณาตามความรุนแรงและความถี่ของการทำผิด โดยมีระดับสัญลักษณ์ความรุนแรง 6 ระดับ:
+• ระดับสีเขียว: ตักเตือน / ความผิดเล็กน้อย
+• ระดับสีขาว: ความผิดทั่วไปขั้นต้น
+• ระดับสีเหลือง: ความผิดระดับปานกลาง
+• ระดับสีส้ม: ความผิดค่อนข้างรุนแรง
+• ระดับสีแดง: ความผิดรุนแรง
+• ระดับสีดำ: ความผิดรุนแรงสูงสุด / แบนถาวร`, ['6 ระดับโทษ'], false, true),
+                                makeArticle(42, 5, 'การลงโทษตามประวัติ', 'ทำผิดซ้ำในมาตราเดิม โทษจะหนักขึ้นตามลำดับ', 'การพิจารณาโทษจะคำนึงถึงประวัติการทำผิดซ้ำ หากทำผิดซ้ำในมาตราเดิม โทษจะหนักขึ้นตามลำดับ'),
+                                makeArticle(43, 5, 'การทวนกฎก่อนลงโทษ', 'ทีมงานต้องทวนกฎที่ละเมิดก่อนลงโทษที่รุนแรง', 'แอดมินหรือบุคคลระดับสูง ต้องทวนกฎที่ผู้เล่นละเมิดก่อนการลงโทษที่รุนแรง เพื่อให้ผู้เล่นรับทราบความผิดด้วย'),
+                                makeArticle(44, 5, 'การห้ามโต้แย้งโทษในที่สาธารณะ', 'ห้ามโต้แย้งในห้องสาธารณะ ต้องยื่นอุทธรณ์ตามช่องทาง', 'สมาชิกที่ถูกลงโทษ ห้ามโต้แย้งการตัดสินโทษในห้องสาธารณะ ต้องใช้ช่องทางอุทธรณ์ที่กำหนดเท่านั้น'),
+                                makeArticle(45, 5, 'การอุทธรณ์โทษ', 'ยื่นเรื่องขอทบทวนโทษตามขั้นตอนและแบบฟอร์ม', 'ผู้ที่ถูกลงโทษมีสิทธิ์ยื่นเรื่องอุทธรณ์ ตามขั้นตอนและแบบฟอร์มที่กำหนด เพื่อขอทบทวนโทษ'),
+                                makeArticle(46, 5, 'การตรวจสอบการอุทธรณ์', 'ตรวจสอบและตอบกลับภายใน 48 ชั่วโมงโดยทีมงานกลาง', 'เรื่องการอุทธรณ์โทษ ต้องถูกตรวจสอบและตอบกลับภายใน 48 ชั่วโมง [หรือตามที่กำหนด] โดยทีมงานที่ไม่มีส่วนเกี่ยวข้องกับโทษนั้น', ['ภายใน 48 ชม.']),
+                                makeArticle(47, 5, 'ห้ามบัญชีสำรองเพื่อหลีกเลี่ยงการแบน', 'ใช้ Alt Account หนีแบนถาวร = แบนทันที', 'หากผู้ใช้ถูกแบนถาวร แล้วพยายามกลับเข้ามาในเซิร์ฟเวอร์ด้วยบัญชีสำรอง [Alt Account] บัญชีนั้นจะถูกแบนทันที', ['Ban Evading'], true),
+                                makeArticle(48, 5, 'การเปลี่ยนแปลงกฎและการรับทราบ', 'ถือว่ารับทราบเมื่อประกาศในห้องอัปเดตกฎ', 'แอดมินขอสงวนสิทธิ์ในการแก้ไขหรือเพิ่มเติมกฎตลอดเวลา และถือว่าสมาชิกทุกคนรับทราบเมื่อมีการประกาศในช่องประกาศอัปเดตกฎของเซิร์ฟเวอร์'),
+                                makeArticle(49, 5, 'การให้ความร่วมมือ', 'ให้ความร่วมมือในการตรวจสอบอย่างสุจริตใจ', 'สมาชิกทุกคน ต้องให้ความร่วมมือกับแอดมินหรือบุคคลระดับสูง ในการตรวจสอบเหตุการณ์หรือการละเมิดกฎอย่างสุจริตใจ'),
+                                makeArticle(50, 5, 'ดุลยพินิจของ Owner', 'คำตัดสินของผู้ก่อตั้งและระดับสูงถือเป็นที่สุด', 'ในกรณีที่สถานการณ์ไม่ได้ระบุไว้ในมาตราใดๆ การตัดสินใจของผู้ก่อตั้งเซิร์ฟเวอร์ และแอดมินระดับสูงถือเป็นที่สุด และมีอำนาจในการตัดสินใจขั้นสูงสุด', ['อำนาจสูงสุด'])
+                            ]
+                        },
+                        /* หมวดที่ 6: มาตรา 51-60 */
+                        {
+                            id: 'discord-cat-6',
+                            title: 'หมวดที่ 6: ป้องกันการหาช่องโหว่ & ข้อบังคับทีมงาน',
+                            subtitle: 'มาตรา 51–60 (Circumvention Prevention & Staff Protocol)',
+                            theme: 'rose',
+                            icon: 'lock',
+                            expanded: false,
+                            categoryPath: 'กฎ Discord • หมวดที่ 6',
+                            description: 'หมวดที่ 6: การป้องกันการหาช่องโหว่และข้อบังคับทีมงาน (Circumvention Prevention & Staff Protocol) ครอบคลุมมาตรา 51 ถึง มาตรา 60',
+                            children: [
+                                makeArticle(51, 6, 'เจตนาการหาช่องโหว่', 'ห้ามใช้ช่องว่างของระบบทำลายบรรยากาศ RP', 'ห้ามกระทำการใดๆ ที่ไม่ผิดกฎที่ระบุไว้อย่างชัดเจน แต่มีเจตนาชัดเจนในการหาช่องโหว่ หรือใช้ประโยชน์จากช่องว่างของระบบเพื่อทำลายบรรยากาศการเล่นบทบาท [RP] หรือสร้างความได้เปรียบที่ไม่เป็นธรรม'),
+                                makeArticle(52, 6, 'การตีความกฎโดยเหล่าระดับสูง', 'ตีความลงโทษการกระทำที่ส่งผลเสียร่วมกับ ม.23 & ม.50', 'แอดมินระดับสูงหรือบุคคลระดับสูง มีสิทธิ์ในการตีความกฎและลงโทษการกระทำที่ส่งผลเสียต่อเซิร์ฟเวอร์ แม้ว่าการกระทำนั้นจะไม่ได้ถูกระบุไว้ในกฎอย่างชัดเจนก็ตาม โดยการตัดสินใจนี้จะต้องใช้มาตรา 23 ประกอบการตัดสินเพื่อความโปร่งใส และถูกต้องตามมาตรา 50'),
+                                makeArticle(53, 6, 'การใช้คำสั่งเลี่ยงการลงโทษ', 'ออกจาก Discord หนีหลังทำผิด = ขึ้นบัญชีดำ', 'ห้ามมิให้ผู้เล่นใช้บทบาท หรือยศ ใช้ช่องโหว่ทางเทคนิคใดๆ เพื่อหลีกเลี่ยงการถูกลงโทษ หรือปกปิดความผิด เช่น การออกจาก Discord ทันทีหลังทำผิดเพื่อเลี่ยงการติดตาม การกระทำนี้จะทำให้คุณขึ้นบัญชีดำไว้', ['Blacklist'], true),
+                                makeArticle(54, 6, 'ข้อบังคับการแก้ไขแบบฟอร์ม', 'ห้ามแก้ไข/บิดเบือนแบบฟอร์มอุทธรณ์หลังส่งแล้ว', 'ห้ามแก้ไขหรือบิดเบือนข้อมูลในแบบฟอร์มการอุทธรณ์โทษหลังจากการส่งแล้วโดยเด็ดขาด การแก้ไขถือเป็นการจงใจให้ข้อมูลเท็จและอาจนำไปสู่การยกเลิกการอุทธรณ์ทันที'),
+                                makeArticle(55, 6, 'ข้อบังคับการใช้บัญชีสำรองชั่วคราว', 'ห้ามใช้ Alt เล่นระหว่างบัญชีหลักติดโทษชั่วคราว', 'หากบัญชีหลักถูกลงโทษชั่วคราว เช่น การถูกเตะ หรือถูกใบ้ ห้ามใช้บัญชีสำรอง [Alt Account] เข้าสู่เซิร์ฟเวอร์เพื่อสนทนาหรือเข้าร่วมกิจกรรมใดๆ จนกว่าโทษของบัญชีหลักจะหมดลง การละเมิดข้อนี้จะนำไปสู่การแบนบัญชีสำรองทันที และอาจเพิ่มระยะเวลาโทษของบัญชีหลัก', ['Alt Account'], true),
+                                makeArticle(56, 6, 'การประสานงานบันทึกภายใน', 'ส่งต่อ killlogs / logs ให้ทีมงานทันเวลาตาม ม.49', 'ผู้ที่เกี่ยวข้องทุกคน ต้องรับประกันว่าข้อมูลบันทึกที่สำคัญต่อการตัดสินโทษ เช่น killlogs หรือ logs จะต้องถูกส่งต่อหรือเข้าถึงได้โดยทีมงานที่เกี่ยวข้องในการตัดสินภายในระยะเวลาที่กำหนด เพื่อให้สามารถปฏิบัติตามมาตรา 49 ได้อย่างเคร่งครัด', ['กฎทีมงาน']),
+                                makeArticle(57, 6, 'การอ้างสิทธิ์การเป็นแอดมินปลอม', 'ห้ามแอบอ้างชื่อ รูป หรือการกระทำว่าเป็นแอดมิน', 'ห้ามสมาชิกทั่วไปแอบอ้างหรือแสดงตนว่าเป็นแอดมิน ผู้ดูแล หรือบุคคลระดับสูงของเซิร์ฟเวอร์ ไม่ว่าจะโดยการใช้ชื่อ ภาพโปรไฟล์ หรือการกระทำที่ทำให้ผู้อื่นเข้าใจผิดว่ามีอำนาจในการจัดการเซิร์ฟเวอร์'),
+                                makeArticle(58, 6, 'การรับรองความรู้กฎ', 'ได้ยศ ประชาชน | VERIFY = รับทราบและยอมรับกฎแล้ว', 'ผู้เล่นทุกคน ที่ได้รับบทบาท ประชาชน | VERIFY ถือว่าได้รับทราบและยอมรับกฎทั้งหมดของเซิร์ฟเวอร์แล้ว และไม่สามารถปฏิเสธความรับผิดชอบโดยอ้างว่าไม่รู้กฎได้', ['ประชาชน | VERIFY']),
+                                makeArticle(59, 6, 'การสอบทานอำนาจร่วม', 'พบการใช้อำนาจในทางที่ผิด ใช้ ม.40 ดำเนินการทันที', 'หากแอดมิน หรือผู้ก่อตั้ง ตรวจพบว่าใครก็ตามมีการใช้อำนาจในทางที่ผิด จะใช้มาตรา 40 เป็นบรรทัดฐานในการดำเนินการทันที', ['กฎทีมงาน']),
+                                makeArticle(60, 6, 'การตัดสินโทษโดยมีมติ', 'เหตุการณ์ที่ไม่เคยเกิดขึ้นมาก่อนต้องลงมติอย่างน้อย 60/100', 'ในกรณีที่เกิดเหตุการณ์ที่ไม่เคยเกิดขึ้นมาก่อน การตัดสินใจนั้นจะต้องได้รับการลงมติอย่างน้อย 60/100 ของจำนวนทั้งหมด เพื่อให้เกิดความโปร่งใสและเป็นธรรมสูงสุดต่อผู้เล่น และเป็นไปตามมาตรา 50', ['มติ 60/100'])
+                            ]
+                        }
+                    ]
+                }
+            ]
+        };
+
+        /**
+         * ============================================================================
+         * 4. COLOR THEME DEFINITIONS
+         * ============================================================================
+         */
+        const themeStyles = {
+            gold: {
+                bg: 'bg-gradient-to-br from-amber-500/25 via-orange-500/15 to-slateDark-900',
+                border: 'border-amber-400/80',
+                hoverBorder: 'hover:border-amber-300',
+                badgeBg: 'bg-amber-500/20 text-amber-300',
+                iconColor: 'text-amber-400',
+                stroke: '#f59e0b'
+            },
+            emerald: {
+                bg: 'bg-slateDark-900/95',
+                border: 'border-emerald-500/55',
+                hoverBorder: 'hover:border-emerald-400',
+                badgeBg: 'bg-emerald-500/20 text-emerald-300',
+                iconColor: 'text-emerald-400',
+                stroke: '#10b981'
+            },
+            teal: {
+                bg: 'bg-slateDark-900/95',
+                border: 'border-teal-500/55',
+                hoverBorder: 'hover:border-teal-400',
+                badgeBg: 'bg-teal-500/20 text-teal-300',
+                iconColor: 'text-teal-400',
+                stroke: '#14b8a6'
+            },
+            amber: {
+                bg: 'bg-slateDark-900/95',
+                border: 'border-amber-500/55',
+                hoverBorder: 'hover:border-amber-400',
+                badgeBg: 'bg-amber-500/20 text-amber-300',
+                iconColor: 'text-amber-400',
+                stroke: '#f59e0b'
+            },
+            sky: {
+                bg: 'bg-slateDark-900/95',
+                border: 'border-sky-500/55',
+                hoverBorder: 'hover:border-sky-400',
+                badgeBg: 'bg-sky-500/20 text-sky-300',
+                iconColor: 'text-sky-400',
+                stroke: '#0ea5e9'
+            },
+            indigo: {
+                bg: 'bg-slateDark-900/95',
+                border: 'border-indigo-500/55',
+                hoverBorder: 'hover:border-indigo-400',
+                badgeBg: 'bg-indigo-500/20 text-indigo-300',
+                iconColor: 'text-indigo-400',
+                stroke: '#6366f1'
+            },
+            rose: {
+                bg: 'bg-slateDark-900/95',
+                border: 'border-rose-500/55',
+                hoverBorder: 'hover:border-rose-400',
+                badgeBg: 'bg-rose-500/20 text-rose-300',
+                iconColor: 'text-rose-400',
+                stroke: '#f43f5e'
+            }
+        };
+
+        /**
+         * ============================================================================
+         * 5. ROBUST UNIDIRECTIONAL TREE ENGINE WITH INFINITE WORLD CANVAS (FIXED)
+         * ============================================================================
+         */
+        const WORLD_SIZE = 10000;
+        const ORIGIN_X = 220;
+        const ORIGIN_Y = 5000;
+
+        const ROOT_WIDTH = 285;
+        const ROOT_HEIGHT = 76;
+        const NODE_WIDTH = 280;
+        const NODE_HEIGHT = 66;
+        const LEVEL_GAP_X = 92;
+        const SIBLING_GAP_Y = 14;
+        const ROOT_BRANCH_GAP_Y = 26;
+
+        // Viewport Pan & Zoom State
+        let panX = 40;
+        let panY = -4600;
+        let scale = 0.85;
+        let isDragging = false;
+        let startDragX = 0;
+        let startDragY = 0;
+
+        // UI & Search State
+        let activeNodeId = null;
+        let currentDrawerNode = null;
+        let matchedNodeIds = [];
+        let activeMatchIndex = -1;
+
+        // DOM Registries
+        const nodeElements = new Map();
+        const edgeElements = new Map();
+        let panAnimFrame = null;
+
+        // DOM References
+        const viewport = document.getElementById('viewport');
+        const world = document.getElementById('world');
+        const nodesLayer = document.getElementById('nodesLayer');
+        const connectorsSvg = document.getElementById('connectorsSvg');
+        const zoomLevelText = document.getElementById('zoomLevelText');
+        const mobileZoomText = document.getElementById('mobileZoomText');
+        const searchInput = document.getElementById('searchInput');
+        const searchControls = document.getElementById('searchControls');
+        const searchCountText = document.getElementById('searchCountText');
+
+        // Drawer DOM References
+        const detailDrawer = document.getElementById('detailDrawer');
+        const drawerIconBox = document.getElementById('drawerIconBox');
+        const drawerCategory = document.getElementById('drawerCategory');
+        const drawerTitle = document.getElementById('drawerTitle');
+        const drawerSyntaxSection = document.getElementById('drawerSyntaxSection');
+        const drawerSyntax = document.getElementById('drawerSyntax');
+        const drawerBadges = document.getElementById('drawerBadges');
+        const drawerSeverityScale = document.getElementById('drawerSeverityScale');
+        const drawerDescription = document.getElementById('drawerDescription');
+        const drawerExamplesSection = document.getElementById('drawerExamplesSection');
+        const drawerDoBox = document.getElementById('drawerDoBox');
+        const drawerDoText = document.getElementById('drawerDoText');
+        const drawerDontBox = document.getElementById('drawerDontBox');
+        const drawerDontText = document.getElementById('drawerDontText');
+        const drawerNoteBox = document.getElementById('drawerNoteBox');
+        const drawerNoteText = document.getElementById('drawerNoteText');
+        const drawerChildrenSection = document.getElementById('drawerChildrenSection');
+        const drawerChildrenCount = document.getElementById('drawerChildrenCount');
+        const drawerChildrenList = document.getElementById('drawerChildrenList');
+        const drawerExpandToggleBtn = document.getElementById('drawerExpandToggleBtn');
+        const drawerExpandToggleText = document.getElementById('drawerExpandToggleText');
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            toastMessage.textContent = message;
+            toast.classList.remove('opacity-0');
+            toast.classList.add('opacity-100');
+            setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0');
+            }, 2200);
+        }
+
+        function copyTextToClipboard(text) {
+            const fallbackCopy = () => {
+                try {
+                    const temp = document.createElement('textarea');
+                    temp.value = text;
+                    temp.style.position = 'fixed';
+                    temp.style.left = '-9999px';
+                    document.body.appendChild(temp);
+                    temp.focus();
+                    temp.select();
+                    const ok = document.execCommand('copy');
+                    document.body.removeChild(temp);
+                    if (ok) showToast(`คัดลอก "${text}" เรียบร้อยแล้ว`);
+                    else showToast('ไม่สามารถคัดลอกอัตโนมัติได้');
+                } catch (e) {
+                    showToast('เกิดข้อผิดพลาดในการคัดลอก');
+                }
+            };
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text)
+                    .then(() => showToast(`คัดลอก "${text}" เรียบร้อยแล้ว`))
+                    .catch(fallbackCopy);
+            } else {
+                fallbackCopy();
+            }
+        }
+
+        /**
+         * 1. Measure Subtree Vertical Height
+         */
+        function computeSubtreeHeight(node, isRootLevel = false) {
+            const hasVisibleChildren = Array.isArray(node.children) && node.children.length > 0 && node.expanded;
+            const selfH = node.id === 'root' ? ROOT_HEIGHT : NODE_HEIGHT;
+            if (!hasVisibleChildren) {
+                node._subtreeHeight = selfH;
+                return selfH;
+            }
+            const gap = isRootLevel ? ROOT_BRANCH_GAP_Y : SIBLING_GAP_Y;
+            let total = 0;
+            node.children.forEach((child, idx) => {
+                total += computeSubtreeHeight(child, false);
+                if (idx < node.children.length - 1) total += gap;
+            });
+            node._subtreeHeight = Math.max(selfH, total);
+            return node._subtreeHeight;
+        }
+
+        /**
+         * 2. Compute Layout within 10000x10000 World Canvas (Origin at ORIGIN_X, ORIGIN_Y)
+         */
+        function computeLeftToRightLayout() {
+            computeSubtreeHeight(mindMapData, true);
+
+            function layoutNode(node, depth, x, topY) {
+                const isRoot = depth === 0;
+                const w = isRoot ? ROOT_WIDTH : NODE_WIDTH;
+                const h = isRoot ? ROOT_HEIGHT : NODE_HEIGHT;
+                node._depth = depth;
+                node._width = w;
+                node._height = h;
+                node._x = x;
+
+                const hasVisibleChildren = Array.isArray(node.children) && node.children.length > 0 && node.expanded;
+                if (!hasVisibleChildren) {
+                    node._y = isRoot ? ORIGIN_Y - ROOT_HEIGHT / 2 : topY + (node._subtreeHeight - h) / 2;
+                    return;
+                }
+
+                const gap = isRoot ? ROOT_BRANCH_GAP_Y : SIBLING_GAP_Y;
+                let childrenBlockH = 0;
+                node.children.forEach((child, idx) => {
+                    childrenBlockH += child._subtreeHeight;
+                    if (idx < node.children.length - 1) childrenBlockH += gap;
+                });
+
+                const nextX = x + w + LEVEL_GAP_X;
+                let cursorY = isRoot
+                    ? ORIGIN_Y - childrenBlockH / 2
+                    : topY + (node._subtreeHeight - childrenBlockH) / 2;
+
+                node.children.forEach((child) => {
+                    layoutNode(child, depth + 1, nextX, cursorY);
+                    cursorY += child._subtreeHeight + gap;
+                });
+
+                if (isRoot) {
+                    node._y = ORIGIN_Y - ROOT_HEIGHT / 2;
+                } else {
+                    const firstChild = node.children[0];
+                    const lastChild = node.children[node.children.length - 1];
+                    const midCenterY = ((firstChild._y + firstChild._height / 2) + (lastChild._y + lastChild._height / 2)) / 2;
+                    node._y = midCenterY - h / 2;
+                }
+            }
+
+            layoutNode(mindMapData, 0, ORIGIN_X, ORIGIN_Y - mindMapData._subtreeHeight / 2);
+        }
+
+        function buildBezierD(parent, child) {
+            const startX = parent._x + parent._width;
+            const startY = parent._y + parent._height / 2;
+            const endX = child._x;
+            const endY = child._y + child._height / 2;
+            const cpOffset = (endX - startX) * 0.5;
+            return `M ${startX.toFixed(1)} ${startY.toFixed(1)} C ${(startX + cpOffset).toFixed(1)} ${startY.toFixed(1)}, ${(endX - cpOffset).toFixed(1)} ${endY.toFixed(1)}, ${endX.toFixed(1)} ${endY.toFixed(1)}`;
+        }
+
+        /**
+         * 3. Render Mind Map Nodes & SVG Connectors
+         */
+        function renderMindMap() {
+            computeLeftToRightLayout();
+
+            const visibleNodes = [];
+            const visibleEdges = [];
+
+            function collect(node, parentNode) {
+                visibleNodes.push({ node, parentNode });
+                if (parentNode) {
+                    visibleEdges.push({
+                        key: `${parentNode.id}->${node.id}`,
+                        parent: parentNode,
+                        child: node
+                    });
+                }
+                if (Array.isArray(node.children) && node.children.length > 0 && node.expanded) {
+                    node.children.forEach((child) => collect(child, node));
+                }
+            }
+
+            collect(mindMapData, null);
+
+            const visibleNodeIds = new Set(visibleNodes.map((item) => item.node.id));
+            const matchSet = new Set(matchedNodeIds);
+            const focusedMatchId = activeMatchIndex >= 0 ? matchedNodeIds[activeMatchIndex] : null;
+
+            // Clean up old nodes
+            for (const [id, el] of nodeElements.entries()) {
+                if (!visibleNodeIds.has(id)) {
+                    el.remove();
+                    nodeElements.delete(id);
+                }
+            }
+
+            // Render nodes
+            visibleNodes.forEach(({ node, parentNode }) => {
+                let el = nodeElements.get(node.id);
+                const isNew = !el;
+                const style = themeStyles[node.theme] || themeStyles.amber;
+                const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+
+                if (isNew) {
+                    el = document.createElement('div');
+                    el.style.width = `${node._width}px`;
+                    el.style.height = `${node._height}px`;
+
+                    const spawnX = parentNode ? parentNode._x : node._x;
+                    const spawnY = parentNode ? parentNode._y : node._y;
+                    el.style.transform = `translate3d(${spawnX}px, ${spawnY}px, 0) scale(0.94)`;
+                    el.style.opacity = parentNode ? '0' : '1';
+
+                    el.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openDetailDrawer(node);
+                    });
+
+                    nodesLayer.appendChild(el);
+                    nodeElements.set(node.id, el);
+                }
+
+                el.innerHTML = '';
+                const card = document.createElement('div');
+                card.className = [
+                    'mm-card w-full h-full rounded-2xl border px-3.5 py-2.5 flex items-center justify-between gap-2.5 cursor-pointer shadow-lg backdrop-blur-md',
+                    style.bg,
+                    style.border,
+                    style.hoverBorder,
+                    node._depth === 0 ? 'root-glow' : ''
+                ].filter(Boolean).join(' ');
+
+                const leftWrap = document.createElement('div');
+                leftWrap.className = 'flex items-center gap-2.5 min-w-0 flex-1';
+
+                const iconBox = document.createElement('div');
+                iconBox.className = `w-9 h-9 rounded-xl ${style.badgeBg} flex items-center justify-center shrink-0 ${style.iconColor}`;
+                iconBox.innerHTML = svgIcons[node.icon] || svgIcons.file;
+
+                const textWrap = document.createElement('div');
+                textWrap.className = 'min-w-0 flex-1';
+
+                const titleEl = document.createElement('div');
+                titleEl.className = `text-xs sm:text-[13px] font-semibold truncate ${node._depth === 0 ? 'text-amber-300 text-sm' : 'text-slate-100'}`;
+                titleEl.textContent = node.title;
+                titleEl.title = node.title;
+                textWrap.appendChild(titleEl);
+
+                if (node.subtitle) {
+                    const subEl = document.createElement('div');
+                    subEl.className = 'text-[11px] text-slate-400 truncate mt-0.5';
+                    subEl.textContent = node.subtitle;
+                    subEl.title = node.subtitle;
+                    textWrap.appendChild(subEl);
+                }
+
+                leftWrap.appendChild(iconBox);
+                leftWrap.appendChild(textWrap);
+                card.appendChild(leftWrap);
+
+                if (hasChildren) {
+                    const toggleBtn = document.createElement('button');
+                    toggleBtn.type = 'button';
+                    toggleBtn.className = 'w-7 h-7 rounded-xl border border-slate-700/90 bg-slateDark-950/95 hover:bg-slate-800 text-slate-200 flex items-center justify-center shrink-0 transition text-xs font-bold shadow';
+                    toggleBtn.title = node.expanded ? 'ยุบกิ่งย่อย' : `ขยายกิ่งย่อย (${node.children.length})`;
+
+                    if (node.expanded) {
+                        toggleBtn.innerHTML = '<svg class="w-3.5 h-3.5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14"/></svg>';
+                    } else {
+                        toggleBtn.innerHTML = `<span class="text-[10px] font-mono text-amber-300">+${node.children.length}</span>`;
+                    }
+
+                    toggleBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        node.expanded = !node.expanded;
+                        renderMindMap();
+                    });
+
+                    card.appendChild(toggleBtn);
+                }
+
+                el.appendChild(card);
+
+                const isMatched = matchSet.has(node.id);
+                const isFocused = focusedMatchId === node.id;
+                const isSelected = activeNodeId === node.id;
+                const isDimmed = matchSet.size > 0 && !isMatched;
+
+                el.className = [
+                    'mm-node',
+                    isMatched ? 'search-match' : '',
+                    isFocused ? 'search-focus' : '',
+                    isSelected ? 'selected-node' : ''
+                ].filter(Boolean).join(' ');
+
+                const targetTransform = `translate3d(${node._x}px, ${node._y}px, 0) scale(1)`;
+                const targetOpacity = isDimmed ? '0.32' : '1';
+
+                if (isNew) {
+                    requestAnimationFrame(() => {
+                        el.style.transform = targetTransform;
+                        el.style.opacity = targetOpacity;
+                    });
+                } else {
+                    el.style.transform = targetTransform;
+                    el.style.opacity = targetOpacity;
+                }
+            });
+
+            // Render SVG Connectors
+            const activeEdgeKeys = new Set(visibleEdges.map((e) => e.key));
+            for (const [key, pathEl] of edgeElements.entries()) {
+                if (!activeEdgeKeys.has(key)) {
+                    pathEl.remove();
+                    edgeElements.delete(key);
+                }
+            }
+
+            visibleEdges.forEach(({ key, parent, child }) => {
+                let pathEl = edgeElements.get(key);
+                const isNewEdge = !pathEl;
+                const style = themeStyles[child.theme] || themeStyles.amber;
+
+                if (isNewEdge) {
+                    pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    pathEl.setAttribute('pathLength', '1');
+                    pathEl.setAttribute('class', 'mm-edge mm-edge-enter');
+
+                    // Clean up dasharray immediately after enter animation finishes so lines never break
+                    const finalizeEdgeDraw = () => {
+                        pathEl.classList.remove('mm-edge-enter');
+                        pathEl.style.strokeDasharray = 'none';
+                        pathEl.style.strokeDashoffset = '';
+                    };
+                    pathEl.addEventListener('animationend', finalizeEdgeDraw, { once: true });
+                    setTimeout(finalizeEdgeDraw, 480);
+
+                    connectorsSvg.appendChild(pathEl);
+                    edgeElements.set(key, pathEl);
+                }
+
+                pathEl.setAttribute('d', buildBezierD(parent, child));
+                pathEl.setAttribute('stroke', style.stroke);
+                pathEl.setAttribute('stroke-width', parent._depth === 0 ? '2.8' : '2');
+                if (!isNewEdge) {
+                    pathEl.style.opacity = matchSet.size > 0 && !matchSet.has(child.id) ? '0.2' : '0.75';
+                }
+            });
+        }
+
+        /**
+         * ============================================================================
+         * 4. PAN & ZOOM CONTROLS
+         * ============================================================================
+         */
+        function applyWorldTransform() {
+            world.style.transform = `translate3d(${panX.toFixed(1)}px, ${panY.toFixed(1)}px, 0) scale(${scale.toFixed(4)})`;
+            const pct = `${Math.round(scale * 100)}%`;
+            if (zoomLevelText) zoomLevelText.textContent = pct;
+            if (mobileZoomText) mobileZoomText.textContent = pct;
+        }
+
+        function resetViewToRoot(smooth = true) {
+            const viewW = viewport.clientWidth || window.innerWidth;
+            const viewH = viewport.clientHeight || (window.innerHeight - 58);
+            const destScale = viewW < 640 ? 0.55 : (viewW < 1024 ? 0.72 : 0.85);
+            const destX = viewW < 640 ? 20 : 40;
+            const destY = viewH / 2 - ORIGIN_Y * destScale;
+
+            if (!smooth) {
+                panX = destX;
+                panY = destY;
+                scale = destScale;
+                applyWorldTransform();
+                return;
+            }
+
+            animateCameraTo(destX, destY, destScale);
+        }
+
+        function animateCameraTo(destX, destY, destScale) {
+            if (panAnimFrame) cancelAnimationFrame(panAnimFrame);
+            const sX = panX;
+            const sY = panY;
+            const sScale = scale;
+            const t0 = performance.now();
+            const duration = 320;
+
+            function step(now) {
+                const t = Math.min(1, (now - t0) / duration);
+                const ease = 1 - Math.pow(1 - t, 3);
+                panX = sX + (destX - sX) * ease;
+                panY = sY + (destY - sY) * ease;
+                scale = sScale + (destScale - sScale) * ease;
+                applyWorldTransform();
+                if (t < 1) {
+                    panAnimFrame = requestAnimationFrame(step);
+                }
+            }
+            panAnimFrame = requestAnimationFrame(step);
+        }
+
+        function zoomAtPoint(newScale, clientX, clientY) {
+            const clamped = Math.max(0.25, Math.min(2.2, newScale));
+            const rect = viewport.getBoundingClientRect();
+            const mx = clientX - rect.left;
+            const my = clientY - rect.top;
+
+            const wx = (mx - panX) / scale;
+            const wy = (my - panY) / scale;
+
+            scale = clamped;
+            panX = mx - wx * scale;
+            panY = my - wy * scale;
+            applyWorldTransform();
+        }
+
+        function panToNode(node) {
+            if (!node) return;
+            const viewW = viewport.clientWidth;
+            const viewH = viewport.clientHeight;
+            const targetScale = Math.max(scale, 0.8);
+            const nodeCenterX = node._x + node._width / 2;
+            const nodeCenterY = node._y + node._height / 2;
+            const destX = viewW / 2 - nodeCenterX * targetScale;
+            const destY = viewH / 2 - nodeCenterY * targetScale;
+            animateCameraTo(destX, destY, targetScale);
+        }
+
+        // Mouse Drag Panning
+        viewport.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            if (panAnimFrame) cancelAnimationFrame(panAnimFrame);
+            isDragging = true;
+            startDragX = e.clientX - panX;
+            startDragY = e.clientY - panY;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            panX = e.clientX - startDragX;
+            panY = e.clientY - startDragY;
+            applyWorldTransform();
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        // Touch Pan & Pinch Zoom
+        let lastPinchDist = null;
+        viewport.addEventListener('touchstart', (e) => {
+            if (panAnimFrame) cancelAnimationFrame(panAnimFrame);
+            if (e.touches.length === 1) {
+                isDragging = true;
+                startDragX = e.touches[0].clientX - panX;
+                startDragY = e.touches[0].clientY - panY;
+            } else if (e.touches.length === 2) {
+                isDragging = false;
+                lastPinchDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+            }
+        }, { passive: true });
+
+        viewport.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 1 && isDragging) {
+                panX = e.touches[0].clientX - startDragX;
+                panY = e.touches[0].clientY - startDragY;
+                applyWorldTransform();
+            } else if (e.touches.length === 2 && lastPinchDist) {
+                const dist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                zoomAtPoint(scale * (dist / lastPinchDist), midX, midY);
+                lastPinchDist = dist;
+            }
+        }, { passive: true });
+
+        viewport.addEventListener('touchend', () => {
+            isDragging = false;
+            lastPinchDist = null;
+        });
+
+        // Wheel Zoom
+        viewport.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const factor = e.deltaY < 0 ? 1.12 : 0.89;
+            zoomAtPoint(scale * factor, e.clientX, e.clientY);
+        }, { passive: false });
+
+        function zoomCenter(factor) {
+            const rect = viewport.getBoundingClientRect();
+            zoomAtPoint(scale * factor, rect.left + rect.width / 2, rect.top + rect.height / 2);
+        }
+
+        document.getElementById('zoomInBtn').addEventListener('click', () => zoomCenter(1.18));
+        document.getElementById('zoomOutBtn').addEventListener('click', () => zoomCenter(0.84));
+        document.getElementById('mobileZoomInBtn').addEventListener('click', () => zoomCenter(1.18));
+        document.getElementById('mobileZoomOutBtn').addEventListener('click', () => zoomCenter(0.84));
+
+        document.getElementById('resetViewBtn').addEventListener('click', () => {
+            resetViewToRoot(true);
+            showToast('รีเซ็ตมุมมองกลับไปที่หัวข้อหลักด้านซ้ายแล้ว');
+        });
+
+        function setAllExpanded(node, state, isRoot = true) {
+            if (Array.isArray(node.children) && node.children.length > 0) {
+                node.expanded = isRoot ? true : state;
+                node.children.forEach((child) => setAllExpanded(child, state, false));
+            }
+        }
+
+        document.getElementById('expandAllBtn').addEventListener('click', () => {
+            setAllExpanded(mindMapData, true, true);
+            renderMindMap();
+            showToast('ขยายกิ่งทั้งหมดออกทางด้านขวาแล้ว');
+        });
+
+        document.getElementById('collapseAllBtn').addEventListener('click', () => {
+            setAllExpanded(mindMapData, false, true);
+            renderMindMap();
+            showToast('ยุบกิ่งทั้งหมดเรียบร้อยแล้ว');
+        });
+
+        /**
+         * ============================================================================
+         * 5. SEARCH & NAVIGATION
+         * ============================================================================
+         */
+        function findNodeById(node, id) {
+            if (node.id === id) return node;
+            if (Array.isArray(node.children)) {
+                for (const child of node.children) {
+                    const found = findNodeById(child, id);
+                    if (found) return found;
+                }
+            }
+            return null;
+        }
+
+        function focusMatch(index) {
+            if (matchedNodeIds.length === 0) return;
+            activeMatchIndex = (index + matchedNodeIds.length) % matchedNodeIds.length;
+            searchCountText.textContent = `${activeMatchIndex + 1}/${matchedNodeIds.length}`;
+            renderMindMap();
+            const target = findNodeById(mindMapData, matchedNodeIds[activeMatchIndex]);
+            panToNode(target);
+        }
+
+        function handleSearch(query) {
+            const q = query.trim().toLowerCase();
+            matchedNodeIds = [];
+            activeMatchIndex = -1;
+
+            if (!q) {
+                searchControls.classList.add('hidden');
+                renderMindMap();
+                return;
+            }
+
+            function searchTree(node) {
+                const text = [
+                    node.title,
+                    node.subtitle || '',
+                    node.description || '',
+                    node.syntax || '',
+                    node.doExample || '',
+                    node.dontExample || '',
+                    node.note || ''
+                ].join(' ').toLowerCase();
+
+                const selfMatch = text.includes(q);
+                let childMatch = false;
+
+                if (selfMatch) matchedNodeIds.push(node.id);
+
+                if (Array.isArray(node.children) && node.children.length > 0) {
+                    node.children.forEach((child) => {
+                        if (searchTree(child)) childMatch = true;
+                    });
+                }
+
+                if (childMatch) node.expanded = true;
+                return selfMatch || childMatch;
+            }
+
+            searchTree(mindMapData);
+            searchControls.classList.remove('hidden');
+
+            if (matchedNodeIds.length > 0) {
+                focusMatch(0);
+            } else {
+                searchCountText.textContent = '0/0';
+                renderMindMap();
+            }
+        }
+
+        searchInput.addEventListener('input', (e) => handleSearch(e.target.value));
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && matchedNodeIds.length > 0) {
+                e.preventDefault();
+                focusMatch(e.shiftKey ? activeMatchIndex - 1 : activeMatchIndex + 1);
+            }
+        });
+
+        document.getElementById('prevMatchBtn').addEventListener('click', () => focusMatch(activeMatchIndex - 1));
+        document.getElementById('nextMatchBtn').addEventListener('click', () => focusMatch(activeMatchIndex + 1));
+        document.getElementById('clearSearchBtn').addEventListener('click', () => {
+            searchInput.value = '';
+            handleSearch('');
+            searchInput.focus();
+        });
+
+        /**
+         * ============================================================================
+         * 6. DETAIL DRAWER
+         * ============================================================================
+         */
+        function openDetailDrawer(node) {
+            currentDrawerNode = node;
+            activeNodeId = node.id;
+            renderMindMap();
+
+            const style = themeStyles[node.theme] || themeStyles.amber;
+            drawerIconBox.className = `w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${style.badgeBg} border ${style.border} ${style.iconColor}`;
+            drawerIconBox.innerHTML = svgIcons[node.icon] || svgIcons.file;
+
+            drawerCategory.textContent = node.categoryPath || 'Bangkok City Roleplay';
+            drawerTitle.textContent = node.title;
+            drawerDescription.textContent = node.description || node.subtitle || '';
+
+            if (node.syntax) {
+                drawerSyntaxSection.classList.remove('hidden');
+                drawerSyntax.textContent = node.syntax;
+            } else {
+                drawerSyntaxSection.classList.add('hidden');
+            }
+
+            drawerBadges.innerHTML = '';
+            if (Array.isArray(node.badges) && node.badges.length > 0) {
+                node.badges.forEach((b) => {
+                    const span = document.createElement('span');
+                    const isDanger = /แบน|รุนแรง|ทุจริต|Blacklist|แรงสุด|Combat Log|Power Abuse|ผิดกฎหมาย|NSFW/i.test(b);
+                    span.className = isDanger
+                        ? 'px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-500/20 text-rose-300 border border-rose-500/35'
+                        : `px-2.5 py-0.5 rounded-full text-xs font-medium ${style.badgeBg} border ${style.border}`;
+                    span.textContent = b;
+                    drawerBadges.appendChild(span);
+                });
+            }
+
+            if (node.hasSeverityScale) {
+                drawerSeverityScale.classList.remove('hidden');
+            } else {
+                drawerSeverityScale.classList.add('hidden');
+            }
+
+            if (node.doExample || node.dontExample) {
+                drawerExamplesSection.classList.remove('hidden');
+                if (node.doExample) {
+                    drawerDoBox.classList.remove('hidden');
+                    drawerDoText.textContent = node.doExample;
+                } else {
+                    drawerDoBox.classList.add('hidden');
+                }
+                if (node.dontExample) {
+                    drawerDontBox.classList.remove('hidden');
+                    drawerDontText.textContent = node.dontExample;
+                } else {
+                    drawerDontBox.classList.add('hidden');
+                }
+            } else {
+                drawerExamplesSection.classList.add('hidden');
+            }
+
+            if (node.note) {
+                drawerNoteBox.classList.remove('hidden');
+                drawerNoteText.textContent = node.note;
+            } else {
+                drawerNoteBox.classList.add('hidden');
+            }
+
+            if (Array.isArray(node.children) && node.children.length > 0) {
+                drawerChildrenSection.classList.remove('hidden');
+                drawerChildrenCount.textContent = String(node.children.length);
+                drawerChildrenList.innerHTML = '';
+
+                node.children.forEach((child) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'w-full text-left p-2.5 rounded-xl bg-slateDark-950/90 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/40 transition flex items-center justify-between gap-2';
+
+                    const info = document.createElement('div');
+                    info.className = 'min-w-0 flex-1';
+
+                    const t = document.createElement('div');
+                    t.className = 'text-xs font-semibold text-slate-200 truncate';
+                    t.textContent = child.title;
+
+                    const s = document.createElement('div');
+                    s.className = 'text-[11px] text-slate-400 truncate';
+                    s.textContent = child.subtitle || '';
+
+                    info.appendChild(t);
+                    info.appendChild(s);
+
+                    const arrow = document.createElement('span');
+                    arrow.className = 'text-slate-500 text-xs shrink-0';
+                    arrow.textContent = '→';
+
+                    btn.appendChild(info);
+                    btn.appendChild(arrow);
+
+                    btn.addEventListener('click', () => {
+                        node.expanded = true;
+                        openDetailDrawer(child);
+                    });
+                    drawerChildrenList.appendChild(btn);
+                });
+
+                drawerExpandToggleBtn.classList.remove('hidden');
+                drawerExpandToggleBtn.classList.add('flex');
+                drawerExpandToggleText.textContent = node.expanded ? 'ยุบกิ่งย่อยนี้' : 'ขยายกิ่งย่อยนี้';
+            } else {
+                drawerChildrenSection.classList.add('hidden');
+                drawerExpandToggleBtn.classList.add('hidden');
+                drawerExpandToggleBtn.classList.remove('flex');
+            }
+
+            detailDrawer.classList.remove('translate-x-full');
+        }
+
+        function closeDetailDrawer() {
+            detailDrawer.classList.add('translate-x-full');
+            activeNodeId = null;
+            renderMindMap();
+        }
+
+        document.getElementById('closeDrawerBtn').addEventListener('click', closeDetailDrawer);
+        document.getElementById('drawerDoneBtn').addEventListener('click', closeDetailDrawer);
+
+        document.getElementById('copySyntaxBtn').addEventListener('click', () => {
+            if (currentDrawerNode && currentDrawerNode.syntax) {
+                copyTextToClipboard(currentDrawerNode.syntax);
+            }
+        });
+
+        drawerExpandToggleBtn.addEventListener('click', () => {
+            if (!currentDrawerNode) return;
+            currentDrawerNode.expanded = !currentDrawerNode.expanded;
+            drawerExpandToggleText.textContent = currentDrawerNode.expanded ? 'ยุบกิ่งย่อยนี้' : 'ขยายกิ่งย่อยนี้';
+            renderMindMap();
+        });
+
+        /**
+         * ============================================================================
+         * 7. INITIALIZE ON WINDOW LOAD
+         * ============================================================================
+         */
+        window.addEventListener('load', () => {
+            resetViewToRoot(false);
+            renderMindMap();
+        });
+    </script>
+</body>
+</html>
